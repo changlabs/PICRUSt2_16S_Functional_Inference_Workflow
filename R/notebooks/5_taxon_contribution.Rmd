@@ -1,0 +1,1419 @@
+---
+title: "Step 5: Taxon Contribution Analysis (Stratified)"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    code_folding: show
+    df_print: paged
+  github_document:
+    toc: true
+    toc_depth: 3
+    html_preview: false
+---
+
+<!-- The hidden setup chunk below controls whether analysis code is executed. HTML reports run the workflow; GitHub Markdown remains a non-executing tutorial and code reference. -->
+
+```{r setup, include=FALSE}
+# Execute the workflow for HTML reports. The GitHub document is a code and
+# tutorial view; disabling evaluation there avoids rerunning analyses or
+# attempting to embed HTML widgets in plain Markdown.
+render_target <- knitr::opts_knit$get("rmarkdown.pandoc.to")
+knitr::opts_chunk$set(
+  eval = !(grepl("^gfm", render_target) || grepl("markdown_github", render_target, fixed = TRUE)),
+  #eval = FALSE,
+  echo = TRUE
+)
+```
+
+<!-- The hidden CSS chunk below affects only the rendered HTML report and is deliberately excluded from GitHub Markdown. -->
+
+```{css custom-styles, echo=FALSE, eval=identical(knitr::opts_knit$get("rmarkdown.pandoc.to"), "html")}
+/* Custom styling for improved readability */
+body {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+h1, h2, h3 {
+  color: #2c3e50;
+  margin-top: 1.5em;
+}
+
+code {
+  background-color: #F2F2F2;
+  color: #2c3e50;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+pre, pre code {
+  font-size: 14px;
+}
+
+.alert-info {
+  background-color: #2c3e50;
+  color: #ffffff;
+  border-left: 4px solid #f39c12;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+.alert-warning {
+  background-color: #2c3e50;
+  color: #ffffff;
+  border-left: 4px solid #e74c3c;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+  border-left: 4px solid #28a745;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+/* Table cells wrap long content (long inline code, sentences) instead of
+   overflowing or forcing horizontal scroll. */
+table {
+  width: 100%;
+}
+
+th, td {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+```
+
+# Introduction
+
+## Purpose
+
+This notebook is **Step 5** of the PICRUSt2 workflow and the **final notebook** in this pipeline. It generates stratified PICRUSt2 contribution tables from Step 2's community-level prediction files, then determines which ASVs contribute to selected **MetaCyc and KEGG pathways**. Both analyses run every time.
+
+::: {.alert .alert-info}
+**This notebook depends on Steps 1 and 2 plus the project metadata/taxonomy files.** It reuses Step 1's BIOM table and Step 2's predicted marker, KO, and EC tables. You may list pathways explicitly in [Configuration](#adjust-analysis-parameters), including candidates identified in [Step 4](4_functional_differential_abundance_analysis.md), or leave the lists empty to select the most abundant predictions from Step 2 automatically.
+:::
+
+::: {.alert .alert-warning}
+**On file size**: `pred_metagenome_contrib.tsv.gz` (per-KO, per-ASV, per-sample) can be multi-gigabyte, and `path_abun_contrib.tsv.gz` can also be large. Step 5 keeps these files compressed and never loads either one in full. It pre-filters selected pathways with a streaming `gzip` + `awk` pass before anything reaches R's memory.
+:::
+
+Step 5 first runs PICRUSt2's metagenome prediction subcommand for both KO and EC with `--strat_out`, then runs pathway inference on the EC contribution table. These outputs record, for every (sample, function, contributing ASV) triple, how much that ASV contributes to the function's predicted abundance in the sample. This reveals whether a prediction is driven by one dominant ASV or distributed across several taxa, which is not recoverable from community-level data alone.
+
+## Prerequisites
+
+Before running this notebook, ensure that:
+
+1.  Required R packages are installed — run [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R) once per R environment (this includes `data.table`, used here for the streaming pre-filter).
+2.  **Step 1 ([1_prepare_picrust2_inputs.Rmd](1_prepare_picrust2_inputs.Rmd))** has produced `study_seqs.biom`.
+3.  **Step 2 ([2_picrust2_pipeline.Rmd](2_picrust2_pipeline.Rmd))** has completed its community-level run, including `combined_marker_predicted_and_nsti.tsv`, `combined_KO_predicted.tsv`, and `combined_EC_predicted.tsv` (plain or gzip-compressed).
+4.  **[data/metadata.tsv](../../data/metadata.tsv)** has been filled in with real sample metadata (see [data/README.md](../../data/README.md)).
+5.  Working `gzip` and `awk` commands are available on `PATH` for memory-safe filtering.
+6.  Optionally list MetaCyc pathway IDs in `metacyc_pathway_ids_of_interest` and KEGG pathway IDs in `kegg_pathway_ids_of_interest`; otherwise, the most abundant pathways are selected automatically from Step 2 abundance tables.
+
+::: {.alert .alert-warning}
+**KEGG naming asymmetry**: PICRUSt2 stratifies raw KOs and native MetaCyc pathways, but does not emit a stratified KEGG-pathway table. The KEGG section therefore maps each selected pathway to its constituent KOs and sums their per-ASV contributions.
+:::
+
+## What This Notebook Does
+
+1.  **Generates KO and EC contribution tables**, then generates the native MetaCyc pathway contribution table from EC contributions.
+2.  **Analyzes both MetaCyc and KEGG pathways**; KEGG contributions are calculated by mapping selected pathways to constituent KOs and summing their per-ASV contributions.
+3.  **Pre-filters** large compressed contribution files to the selected pathway sets with streaming commands.
+4.  **Labels, ranks, and summarizes** taxon contributions using the supplied taxonomy and metadata.
+5.  **Visualizes** MetaCyc and KEGG contributions in genus- and phylum-level interactive condition-split heatmaps.
+6.  **Exports** a separate documented workbook for MetaCyc and KEGG, including the PICRUSt2 contribution-run provenance.
+
+## Statistics and Calculations
+
+- **Contribution** is the portion of a sample's predicted function/pathway
+  abundance assigned by PICRUSt2 to a contributing ASV. KEGG-pathway
+  contribution is the sum of the ASV's constituent-KO contributions after the
+  selected pathway-to-KO mapping is applied.
+- **Top-taxa ranking** is performed separately within every pathway by summing
+  predicted contribution across all samples. The top `top_n_taxa` are retained
+  for display; the union across pathways can therefore contain more than that
+  number of rows.
+- **Zero completion** is applied before condition summaries: when a taxon has
+  no contribution in a sample, that sample contributes an explicit zero rather
+  than being omitted from the mean or standard deviation.
+- **Condition summaries** report the arithmetic mean, sample standard
+  deviation, and number of samples for each pathway/taxon/condition. Heatmap
+  percentages divide a displayed taxon's condition mean by the sum of displayed
+  taxon means for the same pathway and condition after the `Other` aggregate is
+  excluded.
+- **No inferential test or clustering is performed in Step 5.** Taxon and
+  pathway orders are deterministic contribution-based display orders; heatmap
+  proximity does not imply statistical or phylogenetic similarity.
+
+## Expected Input
+
+-   [results/1_prepare_picrust2_inputs/study_seqs.biom](../../results/1_prepare_picrust2_inputs/study_seqs.biom) — Step 1 feature table.
+-   [results/2_picrust2_pipeline/picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/) — Step 2 marker, KO, and EC prediction tables plus community-level MetaCyc and KO abundance tables used for automatic pathway selection.
+-   [data/metadata.tsv](../../data/metadata.tsv) — sample metadata with the required `SampleID`, `Condition`, and `Reference` columns.
+-   `data/asv_taxonomy.csv` — a user-supplied DADA2-compatible ASV-to-taxonomy table, such as `silva_taxonomy_table.csv` or `gtdb_taxonomy_table.csv` from the companion DADA2 workflow.
+
+## Expected Output
+
+-   [results/5_taxon_contribution/stratified_pipeline/](../../results/5_taxon_contribution/stratified_pipeline/) — compressed KO, EC, and MetaCyc contribution tables plus run logs.
+-   [results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx](../../results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx) — native MetaCyc contribution results.
+-   [results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx](../../results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx) — KEGG pathway-to-KO mapping and contribution results.
+-   [results/5_taxon_contribution/](../../results/5_taxon_contribution/) — interactive HTML heatmaps and the corresponding workbooks.
+
+------------------------------------------------------------------------
+
+# Environment Setup
+
+## Load Required Packages {#load-packages}
+
+The chunk below loads every R package this notebook depends on, plus the shared helpers used for Excel writing, column-dictionary documentation, clickable output links, output-tree reporting, memory-safe contribution processing, KEGG aggregation, and interactive heatmaps (each sourced from [R/functions/](../functions/)).
+
+```{r load-packages, message=FALSE, warning=FALSE}
+# NOTE: This chunk assumes the packages below are already installed. If any
+# library() call fails with "there is no package called ...", run
+# setup/install_R_dependencies.R once to install every package this
+# workflow needs, then re-run this notebook.
+
+library(here)         # Project-relative file paths
+library(readr)        # Fast, consistent delimited-file import (metadata only)
+library(dplyr)         # Data manipulation grammar (filter/mutate/summarise/join)
+library(tidyr)         # Reshaping between wide and long formats
+library(tibble)        # Modern data frames with explicit rownames-as-column handling
+library(ggplot2)       # Plotting dependency used by the PICRUSt2 ecosystem
+library(plotly)        # Interactive condition-split heatmaps with hover details
+library(htmlwidgets)   # Saves interactive plotly charts as standalone HTML files
+library(ggpicrust2)    # PICRUSt2 ecosystem utilities and reference compatibility
+library(data.table)    # fread(cmd = ...) streaming pre-filter for multi-GB contribution files
+library(openxlsx)      # Excel file creation and manipulation
+
+# Source the custom Excel utility functions from the project's function library
+source(here("R", "functions", "add_sheet_to_excel_function.R"))
+source(here("R", "functions", "build_column_dictionary_function.R"))
+source(here("R", "functions", "render_output_links_function.R"))
+# Source the custom render_output_tree utility function from the project's
+# function library. This function prints this notebook's entire output
+# folder as a clickable directory tree (used in "Output File Summary" below),
+# scanned live from disk at knit time so it always matches what was actually
+# produced on this run.
+source(here("R", "functions", "render_output_tree_function.R"))
+source(here("R", "functions", "run_kegg_taxon_contribution_function.R"))
+```
+
+------------------------------------------------------------------------
+
+# Configuration
+
+## Adjust Analysis Parameters {#adjust-analysis-parameters}
+
+Set the MetaCyc and KEGG pathways to analyze, the resources used to generate contribution tables, and the taxon-aggregation settings. Both contribution analyses always run. Explicit pathway IDs—including candidates copied from Step 4—take priority; an empty list triggers automatic selection from Step 2's community-level abundance tables.
+
+```{r define-analysis-parameters}
+# >>> USER INPUT: PUT DESIRED METACYC PATHWAY IDS HERE <<<
+metacyc_pathway_ids_of_interest <- c(
+  # "PWY-5484", "GLYCOLYSIS"               # <-- EDIT to inspect specific pathways
+)
+
+# >>> USER INPUT: PUT DESIRED KEGG PATHWAY IDS HERE <<<
+# KEGG pathways for KO-to-pathway aggregation. Accepted forms include
+# "ko00010", "map00010", or "00010". Leave empty to select the most
+# abundant KEGG pathways derived from Step 2's KO abundance table.
+kegg_pathway_ids_of_interest <- c(
+  # "ko00010", "ko00620"                    # <-- EDIT to inspect specific pathways
+)
+
+# When an explicit list is empty, select this many abundant pathways.
+# Ten gives the heatmaps enough functional breadth while remaining readable.
+auto_select_n_features <- 10
+
+# ------------------------------------------------------------------
+# Condition column required by the workflow's documented metadata schema.
+# ------------------------------------------------------------------
+group_column <- "Condition"
+
+# ------------------------------------------------------------------
+# Path to a taxonomy table mapping ASV IDs (matching the "taxon"
+# column of the stratified PICRUSt2 output, e.g. "ASV100") to taxonomic
+# ranks. Supply a real DADA2 SILVA or GTDB taxonomy export. Genus- and
+# phylum-level heatmaps require this table.
+# ------------------------------------------------------------------
+taxonomy_table_path <- here("data", "asv_taxonomy.csv")
+# Copy a SILVA or GTDB taxonomy table produced by a DADA2 workflow to this
+# standard location. The notebook stops clearly if it is absent because both
+# requested heatmaps depend on taxonomy ranks.
+tax_level <- "Genus"         # Rank retained beside each ASV in exported tables
+
+# The notebook makes one condition-split heatmap for each rank listed here.
+# Each row is the contribution aggregated across all ASVs assigned to that rank.
+heatmap_tax_levels <- c("Genus", "Phylum")
+
+# ------------------------------------------------------------------
+# Number of top-contributing taxa to keep per function; the rest are
+# lumped into a single "Other" category by the aggregation chunk below.
+# ------------------------------------------------------------------
+top_n_taxa <- 10  # <-- EDIT to show more/fewer individual taxa before lumping
+
+# PICRUSt2 resource controls for Step 5's stratified subcommands. Thread count
+# is detected rather than tied to the development machine; schedulers can set
+# PICRUST2_NUM_THREADS to a positive integer without editing this notebook.
+detected_cores <- parallel::detectCores(logical = TRUE)
+default_num_threads <- if (is.na(detected_cores)) {
+  1L
+} else {
+  max(1L, as.integer(detected_cores) - 1L)
+}
+thread_override <- Sys.getenv("PICRUST2_NUM_THREADS", unset = "")
+if (nzchar(thread_override)) {
+  parsed_thread_override <- suppressWarnings(as.integer(thread_override))
+  if (is.na(parsed_thread_override) || parsed_thread_override < 1L ||
+      !identical(as.character(parsed_thread_override), trimws(thread_override))) {
+    stop("PICRUST2_NUM_THREADS must be a positive whole number; received: ",
+         thread_override)
+  }
+  num_threads <- parsed_thread_override
+} else {
+  num_threads <- default_num_threads
+}
+
+# Use the same NSTI override as Steps 2 and 3 so the contribution run applies
+# the same ASV eligibility rule as the community-level run.
+max_nsti_text <- Sys.getenv("PICRUST2_MAX_NSTI", unset = "2.0")
+max_nsti_threshold <- suppressWarnings(as.numeric(max_nsti_text))
+if (length(max_nsti_threshold) != 1L || is.na(max_nsti_threshold) ||
+    !is.finite(max_nsti_threshold) || max_nsti_threshold < 0) {
+  stop("PICRUST2_MAX_NSTI must be one finite non-negative number; received: ",
+       max_nsti_text)
+}
+
+# Retain functions observed in at least one read and one sample. These values
+# are explicit PICRUSt2 filtering settings, not sample-specific assumptions.
+min_reads <- 1
+min_samples <- 1
+
+# Resolve the conda environment by name rather than embedding a machine-specific
+# installation path. Users with a differently named environment can override it
+# through PICRUST2_CONDA_ENV_NAME without editing the notebook.
+conda_env_name <- Sys.getenv("PICRUST2_CONDA_ENV_NAME", unset = "picrust2")
+if (!nzchar(trimws(conda_env_name))) {
+  stop("PICRUST2_CONDA_ENV_NAME must not be empty.")
+}
+
+# Reuse is deliberately opt-in, matching Step 2. The default prevents a new
+# notebook run from silently adopting contribution tables generated from older
+# inputs or settings. Set the variable only when refreshing reports from a
+# complete Step 5 run that you intentionally want to reuse.
+reuse_existing_text <- tolower(trimws(Sys.getenv(
+  "PICRUST2_REUSE_EXISTING_OUTPUTS", unset = "false"
+)))
+if (!(reuse_existing_text %in% c("true", "false"))) {
+  stop(
+    "PICRUST2_REUSE_EXISTING_OUTPUTS must be either true or false; received: ",
+    reuse_existing_text
+  )
+}
+reuse_existing_contribution_outputs_requested <- identical(
+  reuse_existing_text, "true"
+)
+
+# Validate every user-adjustable value before importing large files or launching
+# external commands. These checks convert configuration mistakes into immediate,
+# specific errors rather than partial PICRUSt2 output.
+if (length(auto_select_n_features) != 1L || is.na(auto_select_n_features) ||
+    !is.finite(auto_select_n_features) || auto_select_n_features < 1 ||
+    auto_select_n_features != floor(auto_select_n_features)) {
+  stop("auto_select_n_features must be one positive whole number.")
+}
+if (length(top_n_taxa) != 1L || is.na(top_n_taxa) ||
+    !is.finite(top_n_taxa) || top_n_taxa < 1 ||
+    top_n_taxa != floor(top_n_taxa)) {
+  stop("top_n_taxa must be one positive whole number.")
+}
+if (!is.character(heatmap_tax_levels) || length(heatmap_tax_levels) == 0L ||
+    anyNA(heatmap_tax_levels) || any(!nzchar(heatmap_tax_levels)) ||
+    anyDuplicated(heatmap_tax_levels)) {
+  stop("heatmap_tax_levels must contain unique, non-empty taxonomy column names.")
+}
+if (!is.character(tax_level) || length(tax_level) != 1L ||
+    is.na(tax_level) || !nzchar(tax_level)) {
+  stop("tax_level must be one non-empty taxonomy column name.")
+}
+if (any(c(min_reads, min_samples) < 1) ||
+    any(c(min_reads, min_samples) != floor(c(min_reads, min_samples)))) {
+  stop("min_reads and min_samples must be positive whole numbers.")
+}
+
+resolve_readable_table <- function(path_without_gz) {
+  # Step 2 can retain gzip compression or decompress in place. Accept either
+  # representation and return NA only when neither exists.
+  if (file.exists(path_without_gz)) return(path_without_gz)
+  compressed_path <- paste0(path_without_gz, ".gz")
+  if (file.exists(compressed_path)) return(compressed_path)
+  NA_character_
+}
+
+if (length(metacyc_pathway_ids_of_interest) == 0) {
+  # Automatic selection ranks community-level MetaCyc pathways by abundance
+  # summed over every sample. It is deterministic for a fixed Step 2 table.
+  abundance_path <- resolve_readable_table(here(
+    "results", "2_picrust2_pipeline", "picrust2_out_pipeline",
+    "pathways_out", "path_abun_unstrat.tsv"
+  ))
+  if (!is.na(abundance_path)) {
+    abundance_table <- read_tsv(abundance_path, show_col_types = FALSE)
+    feature_totals <- rowSums(as.data.frame(abundance_table[-1]), na.rm = TRUE)
+    metacyc_pathway_ids_of_interest <- head(
+      unique(abundance_table[[1]][order(feature_totals, decreasing = TRUE)]),
+      auto_select_n_features
+    )
+  }
+  if (length(metacyc_pathway_ids_of_interest) == 0) {
+    stop(
+      "No MetaCyc pathway IDs were supplied and none could be selected from ",
+      "Step 2. Run Step 2 first or list IDs explicitly in Configuration."
+    )
+  }
+  cat("Automatically selected MetaCyc pathways:",
+      paste(metacyc_pathway_ids_of_interest, collapse = ", "), "\n")
+}
+
+cat(
+  # Print the effective configuration so the knitted report records values
+  # after environment-variable overrides and automatic pathway selection.
+  "Step 5 Configuration:\n",
+  "- Analyses: MetaCyc and KEGG (both always run)\n",
+  "- Reuse an existing verified contribution run:",
+  reuse_existing_contribution_outputs_requested, "\n",
+  "- MetaCyc pathway IDs:", paste(metacyc_pathway_ids_of_interest, collapse = ", "), "\n",
+  "- KEGG pathway IDs:", if (length(kegg_pathway_ids_of_interest) == 0) "(auto-select from Step 2)" else paste(kegg_pathway_ids_of_interest, collapse = ", "), "\n",
+  "- PICRUSt2 threads:", num_threads, "\n",
+  "- Logical cores detected:", detected_cores, "\n",
+  "- Thread source:", if (nzchar(thread_override)) "PICRUST2_NUM_THREADS" else "automatic detection", "\n",
+  "- Maximum NSTI:", max_nsti_threshold, "\n",
+  "- Minimum reads per function:", min_reads, "\n",
+  "- Minimum samples per function:", min_samples, "\n",
+  "- Condition column:", group_column, "\n",
+  "- Taxonomy table:", taxonomy_table_path, "\n",
+  "- Top N taxa per function:", top_n_taxa, "\n"
+)
+```
+
+## Define Path Parameters {#define-paths}
+
+This chunk resolves all Step 1, Step 2, metadata, and Step 5 paths. Step 2 prediction inputs may be plain `.tsv` or `.tsv.gz`; the contribution outputs generated here remain compressed.
+
+```{r define-paths}
+# Base folders
+results_folder <- here("results")
+data_folder    <- here("data")
+
+# Step 1 BIOM table and Step 2 community-level prediction outputs.
+step1_output_folder <- here(results_folder, "1_prepare_picrust2_inputs")
+step2_output_folder <- here(results_folder, "2_picrust2_pipeline")
+step2_run_dir <- here(step2_output_folder, "picrust2_out_pipeline")
+input_biom_path <- here(step1_output_folder, "study_seqs.biom")
+input_marker_prediction_path <- resolve_readable_table(here(
+  step2_run_dir, "combined_marker_predicted_and_nsti.tsv"
+))
+input_ko_prediction_path <- resolve_readable_table(here(
+  step2_run_dir, "combined_KO_predicted.tsv"
+))
+input_ec_prediction_path <- resolve_readable_table(here(
+  step2_run_dir, "combined_EC_predicted.tsv"
+))
+input_metadata_path <- here(data_folder, "metadata.tsv")
+
+# Step 5 owns all stratified PICRUSt2 outputs.
+output_root_folder <- here(results_folder, "5_taxon_contribution")
+stratified_run_dir <- here(output_root_folder, "stratified_pipeline")
+ko_contribution_dir <- here(stratified_run_dir, "KO_metagenome_out")
+ec_contribution_dir <- here(stratified_run_dir, "EC_metagenome_out")
+metacyc_contribution_dir <- here(stratified_run_dir, "pathways_out")
+stratified_log_folder <- here(stratified_run_dir, "logs")
+
+input_ko_contrib_path <- here(
+  ko_contribution_dir, "pred_metagenome_contrib.tsv.gz"
+)
+input_contrib_path <- here(
+  metacyc_contribution_dir, "path_abun_contrib.tsv.gz"
+)
+
+# Native MetaCyc analysis outputs. KEGG writes to a sibling directory through
+# run_kegg_taxon_contribution().
+output_folder <- here(output_root_folder, "MetaCyc")
+plots_folder  <- here(output_folder, "plots")
+
+# Step 4 is an optional local source of previously resolved pathway names.
+# Step 5 still runs from Step 2 alone when these workbooks are absent.
+step4_output_folder <- here(results_folder, "4_functional_differential_abundance_analysis")
+step4_workbook_path <- here(
+  step4_output_folder, "functional_daa_summary_MetaCyc.xlsx"
+)
+
+output_excel_path <- here(output_folder, "taxon_contribution_summary.xlsx")
+
+required_inputs <- c(
+  `Step 1 BIOM table` = input_biom_path,
+  `Step 2 marker prediction` = input_marker_prediction_path,
+  `Step 2 KO prediction` = input_ko_prediction_path,
+  `Step 2 EC prediction` = input_ec_prediction_path,
+  `Sample metadata` = input_metadata_path,
+  `ASV taxonomy` = taxonomy_table_path
+)
+# Fail as a single preflight check and name every missing prerequisite, avoiding
+# an external PICRUSt2 launch that is certain to fail partway through.
+missing_inputs <- names(required_inputs)[is.na(required_inputs) | !file.exists(required_inputs)]
+if (length(missing_inputs) > 0) {
+  stop(
+    "Required input(s) are missing: ", paste(missing_inputs, collapse = ", "),
+    ". Run Steps 1 and 2 first and confirm data/metadata.tsv and data/asv_taxonomy.csv exist."
+  )
+}
+cat(
+  "Path Configuration:\n",
+  "- Step 1 BIOM input:", input_biom_path, "\n",
+  "- Step 2 prediction folder:", step2_run_dir, "\n",
+  "- Stratified contribution output:", stratified_run_dir, "\n",
+  "- Metadata input:", input_metadata_path, "\n",
+  "- MetaCyc analysis output:", output_folder, "\n",
+  "- KEGG analysis output:", here(output_root_folder, "KEGG"), "\n"
+)
+```
+
+------------------------------------------------------------------------
+
+# Generate Stratified Contribution Tables
+
+## Verify PICRUSt2 Installation {#verify-picrust2}
+
+Step 5 uses the same `picrust2` conda environment as Step 2, but runs only the metagenome and pathway subcommands needed for contribution tables.
+
+```{r verify-picrust2-installation}
+resolve_conda_executable <- function() {
+  # First try the current R process PATH. A login shell fallback supports IDE
+  # sessions that were opened before conda initialized their environment.
+  path_lookup <- unname(Sys.which("conda"))
+  login_shell <- Sys.getenv("SHELL", unset = "")
+  if (!nzchar(login_shell) || !file.exists(login_shell)) {
+    return(if (nzchar(path_lookup)) path_lookup else NA_character_)
+  }
+  shell_output <- tryCatch(
+    system2(login_shell, args = c("-i", "-c", "echo $CONDA_EXE"),
+            stdout = TRUE, stderr = TRUE),
+    error = function(error) character()
+  )
+  shell_output <- trimws(shell_output)
+  shell_output <- shell_output[nzchar(shell_output)]
+  if (length(shell_output) > 0 && file.exists(tail(shell_output, 1))) {
+    return(tail(shell_output, 1))
+  }
+  if (nzchar(path_lookup)) path_lookup else NA_character_
+}
+
+conda_executable <- resolve_conda_executable()
+if (is.na(conda_executable)) {
+  stop("Could not locate conda. Run setup/install_picrust2.sh or set conda_executable manually.")
+}
+# Ask conda for structured environment information and verify that the command
+# itself succeeded before parsing candidate prefixes from its JSON output.
+conda_env_list_json <- system2(
+  conda_executable, c("env", "list", "--json"), stdout = TRUE, stderr = TRUE
+)
+conda_env_list_status <- attr(conda_env_list_json, "status")
+if (!is.null(conda_env_list_status) && conda_env_list_status != 0) {
+  stop(
+    "Could not list conda environments with ", conda_executable, ":\n",
+    paste(conda_env_list_json, collapse = "\n")
+  )
+}
+
+# Extract absolute environment prefixes from conda's JSON response, then match
+# the requested environment by its final directory component.
+conda_env_paths <- unlist(regmatches(
+  conda_env_list_json, gregexpr('"[^"]*"', conda_env_list_json)
+), use.names = FALSE)
+conda_env_paths <- gsub('"', "", conda_env_paths)
+conda_env_paths <- conda_env_paths[nzchar(conda_env_paths)]
+matching_envs <- conda_env_paths[basename(conda_env_paths) == conda_env_name]
+if (length(matching_envs) == 0) {
+  stop("No conda environment named '", conda_env_name,
+       "' was found. Run setup/install_picrust2.sh first.")
+}
+conda_env_prefix <- matching_envs[[1]]
+
+# PICRUSt2's pathway stage launches its own R process. Remove R variables from
+# the parent notebook so that nested process uses the libraries installed in
+# the PICRUSt2 conda environment rather than the host R installation.
+r_env_vars_to_strip <- c(
+  "R_HOME", "R_LIBS", "R_LIBS_USER", "R_LIBS_SITE",
+  "R_ENVIRON", "R_ENVIRON_USER", "R_PROFILE", "R_PROFILE_USER"
+)
+env_unset_flags <- as.vector(rbind("-u", r_env_vars_to_strip))
+conda_command_args <- function(args) {
+  c(env_unset_flags, shQuote(conda_executable), args)
+}
+
+env_executable <- unname(Sys.which("env"))
+if (!nzchar(env_executable)) {
+  stop("The 'env' executable was not found on PATH; it is required to isolate PICRUSt2's nested R process.")
+}
+
+# A version query is a lightweight end-to-end test that conda, the environment,
+# and PICRUSt2's Python entry point are all executable before the long run starts.
+picrust2_version <- system2(
+  env_executable,
+  conda_command_args(c(
+    "run", "-p", conda_env_prefix, "--no-capture-output",
+    "metagenome_pipeline.py", "--version"
+  )),
+  stdout = TRUE, stderr = TRUE
+)
+if (!is.null(attr(picrust2_version, "status")) &&
+    attr(picrust2_version, "status") != 0) {
+  stop("PICRUSt2 could not be run in ", conda_env_prefix, ":\n",
+       paste(picrust2_version, collapse = "\n"))
+}
+cat("PICRUSt2 installation verified:", paste(picrust2_version, collapse = " "), "\n")
+```
+
+## Run KO, EC, and MetaCyc Contribution Pipelines {#run-contribution-pipelines}
+
+The two `metagenome_pipeline.py` calls generate KO and EC contribution tables, and `pathway_pipeline.py` converts the EC contribution table into native MetaCyc pathway contributions. By default, an existing output directory stops the notebook rather than being silently reused. Set `PICRUST2_REUSE_EXISTING_OUTPUTS=true` only when intentionally refreshing the report from a complete existing run; a partial set is always rejected so outputs from different runs cannot be mixed.
+
+```{r run-contribution-pipelines}
+# These three directories form one logical run. Reuse is allowed only when all
+# three canonical outputs exist; a partial set is rejected to prevent mixing
+# products from different inputs or parameter values.
+existing_run_dirs <- c(
+  ko_contribution_dir, ec_contribution_dir, metacyc_contribution_dir
+)
+expected_contribution_outputs <- c(
+  input_ko_contrib_path,
+  here(ec_contribution_dir, "pred_metagenome_contrib.tsv.gz"),
+  input_contrib_path
+)
+reuse_existing_contribution_outputs <- FALSE
+if (any(dir.exists(existing_run_dirs))) {
+  if (!reuse_existing_contribution_outputs_requested) {
+    stop(
+      "A Step 5 contribution output directory already exists: ",
+      stratified_run_dir, "\n",
+      "Rename/remove it for a new run, or set ",
+      "PICRUST2_REUSE_EXISTING_OUTPUTS=true to verify and reuse a complete ",
+      "existing run without launching PICRUSt2."
+    )
+  }
+  if (all(file.exists(expected_contribution_outputs))) {
+    reuse_existing_contribution_outputs <- TRUE
+    message(
+      "Verified a complete existing Step 5 contribution run; reusing its KO, ",
+      "EC, and MetaCyc contribution tables."
+    )
+  } else {
+    stop(
+      "A partial Step 5 contribution run exists. Rename or remove ",
+      "results/5_taxon_contribution/stratified_pipeline before rerunning so ",
+      "outputs from different runs cannot be mixed. Missing expected file(s): ",
+      paste(expected_contribution_outputs[!file.exists(expected_contribution_outputs)],
+            collapse = ", ")
+    )
+  }
+} else if (reuse_existing_contribution_outputs_requested) {
+  message(
+    "PICRUST2_REUSE_EXISTING_OUTPUTS=true was requested, but no existing ",
+    "Step 5 contribution directory was found; generating a new run."
+  )
+}
+dir.create(stratified_log_folder, recursive = TRUE, showWarnings = FALSE)
+
+run_picrust2_contribution_command <- function(stage, command_args,
+                                              expected_output, log_path) {
+  # Preserve a human-readable command in the workbook even in reuse mode. The
+  # shQuote() calls keep paths containing spaces unambiguous in the audit record.
+  command_text <- paste(
+    shQuote(env_executable),
+    paste(conda_command_args(command_args), collapse = " ")
+  )
+  if (reuse_existing_contribution_outputs) {
+    # No command is run in this branch. Timing is therefore unknown rather than
+    # incorrectly attributed to the current notebook render.
+    return(data.frame(
+      Stage = stage,
+      `Run Status` = "Reused existing verified output",
+      Command = command_text,
+      # No subprocess ran during reuse, so there is no current exit code.
+      `Exit Code` = NA_integer_,
+      `Verified Output` = file.exists(expected_output),
+      `Duration (minutes)` = NA_real_,
+      `Output File` = expected_output,
+      check.names = FALSE
+    ))
+  }
+
+  # Capture stdout and stderr in a stage-specific log, record wall time, and
+  # require both a zero exit code and the canonical output file.
+  started <- Sys.time()
+  exit_code <- system2(
+    env_executable, conda_command_args(command_args),
+    stdout = log_path, stderr = log_path
+  )
+  duration <- round(as.numeric(difftime(Sys.time(), started, units = "mins")), 2)
+  verified <- identical(as.integer(exit_code), 0L) && file.exists(expected_output)
+  if (!verified) {
+    # Include only the log tail in the error so the rendered report stays useful
+    # while the complete diagnostic record remains available on disk.
+    log_tail <- if (file.exists(log_path)) tail(readLines(log_path, warn = FALSE), 40) else "(log unavailable)"
+    stop(stage, " failed or did not produce ", expected_output, ".\nLog tail:\n",
+         paste(log_tail, collapse = "\n"))
+  }
+  data.frame(
+    Stage = stage,
+    `Run Status` = "Executed in this notebook run",
+    Command = command_text,
+    `Exit Code` = as.integer(exit_code),
+    `Verified Output` = verified,
+    `Duration (minutes)` = duration,
+    `Output File` = expected_output,
+    check.names = FALSE
+  )
+}
+
+conda_run_prefix <- c(
+  "run", "-p", conda_env_prefix, "--no-capture-output"
+)
+
+# Stage 1 predicts stratified KO contributions directly from the Step 1 BIOM
+# table plus Step 2's marker and KO copy-number predictions.
+ko_run <- run_picrust2_contribution_command(
+  "KO metagenome contribution",
+  c(conda_run_prefix, "metagenome_pipeline.py",
+    "-i", input_biom_path, "-f", input_ko_prediction_path,
+    "-m", input_marker_prediction_path,
+    "--max_nsti", as.character(max_nsti_threshold),
+    "--min_reads", as.character(min_reads),
+    "--min_samples", as.character(min_samples),
+    "-o", ko_contribution_dir, "--strat_out"),
+  input_ko_contrib_path,
+  here(stratified_log_folder, "ko_metagenome_contribution.log")
+)
+
+# Stage 2 repeats the metagenome calculation for enzyme commission (EC)
+# functions, which are the required input for native MetaCyc reconstruction.
+ec_run <- run_picrust2_contribution_command(
+  "EC metagenome contribution",
+  c(conda_run_prefix, "metagenome_pipeline.py",
+    "-i", input_biom_path, "-f", input_ec_prediction_path,
+    "-m", input_marker_prediction_path,
+    "--max_nsti", as.character(max_nsti_threshold),
+    "--min_reads", as.character(min_reads),
+    "--min_samples", as.character(min_samples),
+    "-o", ec_contribution_dir, "--strat_out"),
+  here(ec_contribution_dir, "pred_metagenome_contrib.tsv.gz"),
+  here(stratified_log_folder, "ec_metagenome_contribution.log")
+)
+
+# Stage 3 reconstructs stratified MetaCyc pathways from the EC contributions.
+# KEGG pathways are handled later by mapping and summing stratified KOs.
+metacyc_run <- run_picrust2_contribution_command(
+  "MetaCyc pathway contribution",
+  c(conda_run_prefix, "pathway_pipeline.py",
+    "-i", here(ec_contribution_dir, "pred_metagenome_contrib.tsv.gz"),
+    "-o", metacyc_contribution_dir,
+    "--processes", as.character(num_threads)),
+  input_contrib_path,
+  here(stratified_log_folder, "metacyc_pathway_contribution.log")
+)
+
+contribution_run_summary <- bind_rows(ko_run, ec_run, metacyc_run) %>%
+  mutate(`PICRUSt2 Version` = paste(picrust2_version, collapse = " "))
+
+# Display and link the provenance record immediately so a user running chunks
+# interactively can inspect the products before downstream summarization.
+print(contribution_run_summary)
+render_output_links(
+  c(input_ko_contrib_path, input_contrib_path, stratified_log_folder),
+  labels = c(
+    "KO contribution table", "MetaCyc contribution table",
+    "Contribution-generation logs"
+  )
+)
+
+dir.create(plots_folder, recursive = TRUE, showWarnings = FALSE)
+# Delete only plot filenames owned by this step; tables and external inputs are
+# never touched by the cleanup helper.
+remove_stale_taxon_plot_files(plots_folder)
+```
+
+------------------------------------------------------------------------
+
+# Import and Validate Input Data
+
+## Load Metadata {#load-metadata}
+
+This chunk reads `data/metadata.tsv` and validates the simplified `SampleID`, `Condition`, and `Reference` schema before any of the much larger contribution data is touched.
+
+```{r load-metadata}
+sample_metadata <- read_tsv(input_metadata_path, show_col_types = FALSE, trim_ws = TRUE)
+
+# Enforce the repository's deliberately small metadata contract. Requiring the
+# exact schema avoids silently carrying unrelated or misspelled columns.
+required_metadata_columns <- c("SampleID", group_column, "Reference")
+missing_metadata_columns <- setdiff(required_metadata_columns, colnames(sample_metadata))
+if (length(missing_metadata_columns) > 0) {
+  stop(
+    "data/metadata.tsv is missing required column(s): ",
+    paste(missing_metadata_columns, collapse = ", "),
+    ". Required columns are SampleID, Condition, and Reference."
+  )
+}
+unexpected_metadata_columns <- setdiff(colnames(sample_metadata), required_metadata_columns)
+if (length(unexpected_metadata_columns) > 0) {
+  stop(
+    "data/metadata.tsv must use exactly the simplified SampleID, Condition, ",
+    "and Reference schema. Unexpected column(s): ",
+    paste(unexpected_metadata_columns, collapse = ", ")
+  )
+}
+if (anyDuplicated(sample_metadata$SampleID)) {
+  stop("data/metadata.tsv contains duplicate SampleID values; each sample must occur exactly once.")
+}
+if (any(is.na(sample_metadata$SampleID) | trimws(sample_metadata$SampleID) == "")) {
+  stop("data/metadata.tsv contains an empty SampleID value.")
+}
+if (any(is.na(sample_metadata[[group_column]]) | trimws(sample_metadata[[group_column]]) == "")) {
+  stop("data/metadata.tsv contains an empty ", group_column, " value.")
+}
+
+# Normalize quoted/string logical values while rejecting anything that cannot
+# be interpreted unambiguously as TRUE or FALSE.
+reference_flag <- if (is.logical(sample_metadata$Reference)) {
+  sample_metadata$Reference
+} else {
+  as.logical(sample_metadata$Reference)
+}
+if (any(is.na(reference_flag))) {
+  stop("data/metadata.tsv's Reference column must contain only TRUE or FALSE.")
+}
+sample_metadata$Reference <- reference_flag
+
+# Reference is a property of an entire condition. Every sample within a
+# condition must agree, and exactly one condition must be the reference.
+reference_flags_by_condition <- sample_metadata %>%
+  group_by(.data[[group_column]]) %>%
+  summarise(n_flags = n_distinct(Reference), .groups = "drop")
+if (any(reference_flags_by_condition$n_flags != 1)) {
+  stop("Every sample in a Condition must have the same Reference value.")
+}
+reference_conditions <- unique(sample_metadata[[group_column]][sample_metadata$Reference])
+if (length(reference_conditions) != 1) {
+  stop("Exactly one Condition must be marked Reference = TRUE.")
+}
+
+cat(
+  "Metadata loaded:", nrow(sample_metadata), "samples.\n",
+  "- Conditions:", paste(unique(sample_metadata[[group_column]]), collapse = ", "), "\n",
+  "- Reference condition:", reference_conditions, "\n"
+)
+```
+
+## Stream-Filter and Load the Stratified Contribution Table {#stream-filter}
+
+This is the notebook's key memory-safety step: rather than reading the large compressed MetaCyc contribution file into R, it streams the file through `gzip` and `awk`, retains only rows matching `metacyc_pathway_ids_of_interest`, and pipes that filtered stream into `data.table::fread()`.
+
+```{r stream-filter-contribution-table}
+# The helper safely quotes the file and requested IDs, uses gzip only for a
+# compressed input, and preserves the header for fread().
+awk_filter_command <- build_contribution_filter_command(
+  input_contrib_path, metacyc_pathway_ids_of_interest
+)
+
+cat("Streaming pre-filter (this reads the full source file once, but never ",
+    "loads it into memory all at once):\n ", awk_filter_command, "\n")
+
+# fread() receives only the selected rows from the pipe, limiting R memory use
+# even when the complete stratified table is many gigabytes.
+contrib_filtered_raw <- fread(cmd = awk_filter_command, sep = "\t", header = TRUE)
+contrib_filtered_raw <- as.data.frame(contrib_filtered_raw)
+
+if (nrow(contrib_filtered_raw) == 0) {
+  stop(
+    "The stream-filter matched zero rows. Confirm the configured MetaCyc ",
+    "pathway IDs exist in the generated contribution table. IDs usually look ",
+    "like \"PWY-5484\" or \"GLYCOLYSIS\"."
+  )
+}
+
+cat(
+  "Stream-filter complete:", nrow(contrib_filtered_raw), "rows retained for",
+  length(unique(contrib_filtered_raw$`function`)), "of",
+  length(metacyc_pathway_ids_of_interest),
+  "requested feature ID(s).\n"
+)
+
+# A partial match is useful but deserves a visible warning: keep the valid IDs
+# while naming requested pathways that did not occur in this run.
+matched_features   <- unique(contrib_filtered_raw$`function`)
+unmatched_features <- setdiff(metacyc_pathway_ids_of_interest, matched_features)
+if (length(unmatched_features) > 0) {
+  warning(
+    "No rows found for ", length(unmatched_features), " requested feature ID(s): ",
+    paste(unmatched_features, collapse = ", "),
+    " -- double-check these IDs exist in this contribution run's output."
+  )
+}
+```
+
+## Canonicalize Contribution Columns {#canonicalize}
+
+The stream-filtered rows are still in PICRUSt2's raw on-disk column layout. This chunk selects the documented sample, function, taxon, and per-taxon functional-abundance fields and gives them stable names for the rest of the analysis. Doing this explicitly avoids relying on contribution helper functions that are absent from current `ggpicrust2` releases.
+
+```{r canonicalize-contrib-data}
+# PICRUSt2 column names are validated explicitly before renaming so upstream
+# format changes cannot silently populate the wrong biological quantity.
+required_contribution_columns <- c("sample", "function", "taxon", "taxon_function_abun")
+missing_contribution_columns <- setdiff(required_contribution_columns, names(contrib_filtered_raw))
+if (length(missing_contribution_columns) > 0) {
+  stop("The PICRUSt2 contribution table is missing required columns: ",
+       paste(missing_contribution_columns, collapse = ", "))
+}
+# `taxon_function_abun` is the predicted amount attributed to this taxon, not
+# the taxon's marker abundance or the unstratified pathway total.
+contrib_data <- contrib_filtered_raw %>%
+  transmute(
+    sample = as.character(sample),
+    function_id = as.character(`function`),
+    taxon = as.character(taxon),
+    contribution = as.numeric(taxon_function_abun)
+  )
+
+cat("Canonicalized contribution table:", nrow(contrib_data), "rows,",
+    "columns:", paste(colnames(contrib_data), collapse = ", "), "\n")
+```
+
+## Validate Sample ID Consistency {#validate-samples}
+
+Before aggregating, this chunk confirms every sample present in the filtered contribution data also has a metadata row — an unmatched sample would otherwise silently drop out of the group-wise summary below rather than raising an error.
+
+```{r validate-sample-ids}
+contrib_sample_ids  <- unique(contrib_data$sample)
+metadata_sample_ids <- sample_metadata$SampleID
+
+samples_missing_from_metadata <- setdiff(contrib_sample_ids, metadata_sample_ids)
+if (length(samples_missing_from_metadata) > 0) {
+  stop(
+    "Sample(s) present in the stratified contribution output but missing from ",
+    "data/metadata.tsv: ", paste(samples_missing_from_metadata, collapse = ", "), "\n",
+    "Fix data/metadata.tsv before proceeding."
+  )
+}
+
+# A metadata sample can legitimately have no row after filtering to selected
+# pathways because its contribution is zero for every selected pathway. Those
+# samples are retained as explicit zeros by complete_contribution_grid() below.
+samples_without_selected_contributions <- setdiff(
+  metadata_sample_ids, contrib_sample_ids
+)
+if (length(samples_without_selected_contributions) > 0L) {
+  message(
+    length(samples_without_selected_contributions),
+    " metadata sample(s) have no non-zero contribution to the selected pathways; ",
+    "they will be included as zeros in condition summaries: ",
+    paste(samples_without_selected_contributions, collapse = ", ")
+  )
+}
+
+cat("Sample ID validation passed:", length(contrib_sample_ids),
+    "samples in the filtered contribution data all have matching metadata.\n")
+```
+
+------------------------------------------------------------------------
+
+# Aggregate Taxon Contributions
+
+## Load and Validate the Taxonomy Table {#load-taxonomy}
+
+This chunk loads the DADA2-compatible taxonomy table and validates the configured heatmap ranks. Both requested visualizations aggregate contributions across ASVs assigned to the same genus or phylum, so the notebook stops with a clear message if the taxonomy table or either rank is unavailable.
+
+```{r load-taxonomy-table}
+taxonomy_table <- NULL
+if (!is.null(taxonomy_table_path)) {
+  # Support the CSV exported by the companion DADA2 workflows and TSV files
+  # with the same schema; delimiter choice is based only on file extension.
+  taxonomy_table <- if (tolower(tools::file_ext(taxonomy_table_path)) == "csv") {
+    read_csv(taxonomy_table_path, show_col_types = FALSE, trim_ws = TRUE)
+  } else {
+    read_tsv(taxonomy_table_path, show_col_types = FALSE, trim_ws = TRUE)
+  }
+  cat("Taxonomy table loaded:", nrow(taxonomy_table), "rows,",
+      "columns:", paste(colnames(taxonomy_table), collapse = ", "), "\n")
+  if (!("ASV_ID" %in% names(taxonomy_table))) {
+    stop("data/asv_taxonomy.csv must contain an ASV_ID column.")
+  }
+  if (anyDuplicated(taxonomy_table$ASV_ID)) {
+    stop("data/asv_taxonomy.csv contains duplicate ASV_ID values.")
+  }
+
+  # Missing taxonomy rows are retained under their raw ASV IDs in the detailed
+  # export, but their count is surfaced because they limit rank-level plots.
+  missing_taxonomy_ids <- setdiff(unique(contrib_data$taxon), taxonomy_table$ASV_ID)
+  if (length(missing_taxonomy_ids) > 0) {
+    warning(
+      length(missing_taxonomy_ids),
+      " contributing ASV(s) have no row in data/asv_taxonomy.csv and will ",
+      "therefore retain their raw ASV IDs."
+    )
+  }
+  # Every requested heatmap rank must be available before either plot is built,
+  # preventing a partially generated visualization set.
+  missing_heatmap_levels <- setdiff(heatmap_tax_levels, names(taxonomy_table))
+  if (length(missing_heatmap_levels) > 0) {
+    stop(
+      "data/asv_taxonomy.csv is missing required heatmap rank column(s): ",
+      paste(missing_heatmap_levels, collapse = ", ")
+    )
+  }
+} else {
+  stop(
+    "Step 5 requires data/asv_taxonomy.csv to produce the configured genus- ",
+    "and phylum-level heatmaps. Copy a DADA2 taxonomy export into data/."
+  )
+}
+```
+
+## Aggregate the Top Taxon Contributions {#aggregate-contributions}
+
+This is the core aggregation step: it collapses the canonicalized, sample-level contribution rows into a tidy taxon x function x sample table, applies the validated taxonomy labels, inserts explicit zero contributions, adds a human-readable pathway name, and lumps every taxon beyond `top_n_taxa` (ranked by contribution) into a single `Other` category for complete exported tables. The interactive heatmap filters that aggregate out before plotting.
+
+```{r aggregate-taxa-contributions}
+# Start from raw ASV IDs so unmatched taxonomy records remain identifiable.
+contrib_labeled <- contrib_data
+contrib_labeled$taxon_label <- contrib_labeled$taxon
+if (!is.null(taxonomy_table)) {
+  taxonomy_id_column <- "ASV_ID"
+  if (!(tax_level %in% names(taxonomy_table))) {
+    stop("tax_level ('", tax_level, "') is not present in the taxonomy table.")
+  }
+  # Build a minimal lookup and retain the ASV ID in the displayed label. This
+  # preserves traceability when different ASVs share the same genus name.
+  taxonomy_lookup <- taxonomy_table %>%
+    transmute(taxon = as.character(.data[[taxonomy_id_column]]),
+              taxonomy_label = as.character(.data[[tax_level]]))
+  contrib_labeled <- contrib_labeled %>%
+    left_join(taxonomy_lookup, by = "taxon") %>%
+    mutate(taxon_label = build_taxon_display_labels(taxonomy_label, taxon)) %>%
+    select(-taxonomy_label)
+}
+
+# PICRUSt2 omits zero-contribution rows. Complete every function's observed
+# taxon set across all metadata samples before ranking or summarizing so a
+# missing row contributes zero instead of disappearing from mean()/sd().
+contrib_labeled <- complete_contribution_grid(
+  contrib_labeled,
+  sample_ids = sample_metadata$SampleID
+)
+
+# Rank taxa independently within each pathway by predicted contribution summed
+# across all samples. with_ties = FALSE guarantees at most top_n_taxa labels per
+# pathway and deterministic output for a fixed row order.
+top_taxa_by_function <- contrib_labeled %>%
+  group_by(function_id, taxon_label) %>%
+  summarise(total_contribution = sum(contribution, na.rm = TRUE), .groups = "drop") %>%
+  group_by(function_id) %>%
+  slice_max(total_contribution, n = top_n_taxa, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(function_id, taxon_label) %>%
+  mutate(is_top_taxon = TRUE)
+
+# Lump all non-selected taxa into Other only after ranking, then recompute the
+# per-sample total so the detailed workbook still accounts for all contribution.
+contrib_aggregated <- contrib_labeled %>%
+  left_join(top_taxa_by_function, by = c("function_id", "taxon_label")) %>%
+  mutate(taxon_label = ifelse(is.na(is_top_taxon), "Other", taxon_label)) %>%
+  group_by(sample, function_id, taxon_label) %>%
+  summarise(contribution = sum(contribution, na.rm = TRUE), .groups = "drop")
+
+# Resolve names from bundled/local references while retaining stable pathway IDs
+# as the join key and as a fallback when a human-readable name is unavailable.
+pathway_lookup <- build_pathway_name_lookup(
+  pathway_ids = unique(contrib_aggregated$function_id),
+  pathway_level = "MetaCyc",
+  step4_workbook = step4_workbook_path
+)
+contrib_aggregated <- contrib_aggregated %>%
+  left_join(pathway_lookup, by = "function_id") %>%
+  select(sample, function_id, pathway_name, taxon_label, contribution)
+
+cat("Aggregated taxon contribution table:", nrow(contrib_aggregated), "rows,",
+    length(unique(contrib_aggregated$taxon_label)), "distinct taxon labels",
+    "(including \"Other\" if any taxa were lumped).\n")
+```
+
+------------------------------------------------------------------------
+
+# Condition-Wise Contribution Summary
+
+All statistics below are computed by joining `contrib_aggregated` against `data/metadata.tsv`'s `Condition` column, not by hardcoded sample identities — this notebook keeps working unchanged if the sample set changes.
+
+## Join with Metadata and Summarize by Condition {#group-summary}
+
+This chunk attaches each sample's `Condition` value and computes the mean, standard deviation, and sample count of contribution per (pathway, taxon, condition) combination. The pathway name travels with its stable identifier into every exported result table.
+
+```{r group-wise-contribution-summary}
+# The left join retains every zero-completed sample/pathway/taxon combination;
+# metadata validation above guarantees that every contribution sample can match.
+contrib_with_group <- contrib_aggregated %>%
+  left_join(sample_metadata %>% select(SampleID, all_of(group_column)),
+            by = c("sample" = "SampleID"))
+
+# Means and sample SDs describe predicted contribution within each condition.
+# They are descriptive summaries, not differential-abundance significance tests.
+group_contribution_summary <- contrib_with_group %>%
+  group_by(function_id, pathway_name, taxon_label, .data[[group_column]]) %>%
+  summarise(
+    mean_contribution = mean(contribution, na.rm = TRUE),
+    sd_contribution    = sd(contribution, na.rm = TRUE),
+    n_samples          = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(function_id, desc(mean_contribution))
+
+cat(
+  "Condition-wise contribution summary computed:", nrow(group_contribution_summary), "rows",
+  "(function x taxon x condition combinations).\n"
+)
+```
+
+------------------------------------------------------------------------
+
+# Visualization
+
+## Interactive Condition-Split Heatmaps by Taxonomic Rank {#heatmap}
+
+This notebook creates two complementary interactive heatmaps: one aggregated at **genus level** and one at **phylum level**. In each heatmap, rows are taxa at that rank and columns are pathway names. The condition halves sit close together, share the same taxa, pathways, and color limits, and have their condition labels below the heatmap followed by the main plot title. A subtitle beneath the title explains that the top N taxa are selected separately within every pathway and ranked from highest to lowest by predicted contribution summed across all samples. Because the heatmap displays the union of these pathway-specific lists, it can contain more than N taxa in total. The `Other` aggregate is excluded from the displayed percentages. Compact row heights keep the full heatmap and its reserved title/subtitle footer within a manageable canvas. Pathway identifiers are intentionally omitted from the visible column labels but retained in hover text and exported tables. Light-grey borders separate individual cells and frame each condition heatmap on the shared white-to-yellow-to-red contribution scale. Rows and columns are not hierarchically clustered.
+
+```{r interactive-condition-heatmaps}
+# Build each configured taxonomic rank with the same reusable pipeline so genus
+# and phylum plots cannot drift in selection, scaling, annotation, or styling.
+native_heatmap_results <- setNames(lapply(heatmap_tax_levels, function(level) {
+  # Aggregate ASVs to the current rank, insert explicit zeros, and select the
+  # top contributors separately for every pathway before attaching Condition.
+  ranked_contributions <- aggregate_contributions_by_taxonomic_rank(
+    contributions = contrib_data,
+    taxonomy_table = taxonomy_table,
+    taxonomic_level = level,
+    top_n_taxa = top_n_taxa,
+    sample_ids = sample_metadata$SampleID
+  ) %>%
+    left_join(
+      sample_metadata %>% select(SampleID, all_of(group_column)),
+      by = c("sample" = "SampleID")
+    )
+
+  # Average within condition and normalize the displayed (non-Other) taxa to
+  # relative percentages separately for each pathway and condition.
+  heatmap_data <- build_condition_heatmap_data(
+    contributions_with_group = ranked_contributions,
+    group_column = group_column,
+    pathway_lookup = pathway_lookup
+  )
+  # The shared helper fixes panel scales, puts title/subtitle in the reserved
+  # footer, and validates those annotations when the widget is saved.
+  heatmap_widget <- build_condition_heatmap_widget(
+    heatmap_data = heatmap_data,
+    group_column = group_column,
+    title = paste0(level, "-level Relative Taxon Contribution — MetaCyc"),
+    taxonomic_level = level,
+    top_n_taxa = top_n_taxa
+  )
+  heatmap_path <- here(
+    plots_folder,
+    paste0(
+      "taxon_contribution_heatmap_metacyc_",
+      tolower(level), ".html"
+    )
+  )
+  # Self-contained HTML keeps Plotly and its dependencies usable without an R
+  # session or network access when the report is shared.
+  save_interactive_taxon_widget(heatmap_widget, heatmap_path)
+  list(path = heatmap_path, widget = heatmap_widget)
+}), heatmap_tax_levels)
+
+native_heatmap_paths <- vapply(
+  native_heatmap_results, `[[`, character(1), "path"
+)
+native_heatmap_widgets <- lapply(native_heatmap_results, `[[`, "widget")
+# Link the durable files and also embed the same widgets in the HTML report.
+render_output_links(
+  native_heatmap_paths,
+  labels = paste("Interactive", names(native_heatmap_paths),
+                 "condition-split taxon contribution heatmap")
+)
+htmltools::tagList(native_heatmap_widgets)
+```
+
+------------------------------------------------------------------------
+
+# Document and Export Results {#export-results}
+
+This chunk writes the PICRUSt2 contribution-run provenance plus the input metadata, pathway reference, per-sample taxon contributions, and condition-wise summary.
+
+```{r export-to-excel}
+# Start with a clean workbook so sheets left by an earlier run cannot survive.
+if (file.exists(output_excel_path)) {
+  unlink(output_excel_path)
+}
+
+# Sheet 1: exact PICRUSt2 commands and verified outputs
+add_sheet_to_excel(output_excel_path, "PICRUSt2_Contribution_Run",
+                   as.data.frame(contribution_run_summary),
+                   rownames = FALSE, overwrite = TRUE)
+
+# Sheet 2: Metadata (documentation of the exact sample set analyzed)
+add_sheet_to_excel(output_excel_path, "Metadata", as.data.frame(sample_metadata),
+                   rownames = FALSE, overwrite = TRUE)
+
+# Sheet 3: Selected pathway identifiers and human-readable names
+add_sheet_to_excel(output_excel_path, "Pathway_Reference",
+                   as.data.frame(pathway_lookup), rownames = FALSE, overwrite = TRUE)
+
+# Sheet 4: Per-sample aggregated taxon contributions (the finest-grained export)
+add_sheet_to_excel(output_excel_path, "Taxon_Contributions_per_Sample",
+                    as.data.frame(contrib_with_group), rownames = FALSE, overwrite = TRUE)
+
+# Sheet 5: Condition-wise mean/SD contribution summary
+add_sheet_to_excel(output_excel_path, "Contribution_by_Condition",
+                    as.data.frame(group_contribution_summary), rownames = FALSE, overwrite = TRUE)
+
+cat("Results exported to:\n", output_excel_path, "\n")
+```
+
+## Document and Export Column Dictionary {#column-dictionary}
+
+This chunk documents every column of the five exported data sheets in a trailing `Column_Dictionary` sheet, using the project's shared [build_column_dictionary_function.R](../functions/build_column_dictionary_function.R) helper — this project's standard convention of shipping a data dictionary alongside every exported workbook.
+
+```{r build-and-export-column-dictionary}
+# Metadata fields are user-supplied; describe them generically without assuming
+# study-specific meanings that are not present in the file itself.
+metadata_column_descriptions <- setNames(
+  paste("Column from the input data/metadata.tsv file:", colnames(sample_metadata)),
+  colnames(sample_metadata)
+)
+
+per_sample_column_descriptions <- c(
+  sample             = "Sample identifier, matching data/metadata.tsv's SampleID.",
+  function_id        = "MetaCyc pathway identifier (from metacyc_pathway_ids_of_interest).",
+  pathway_name       = "Human-readable MetaCyc pathway name.",
+  taxon              = "Raw ASV/OTU identifier as reported by PICRUSt2's stratified output.",
+  taxon_label        = paste0(tax_level, "-level taxonomic label with the ASV ID retained, or \"Other\" if lumped beyond top_n_taxa."),
+  contribution       = "This ASV's contribution to the function's total predicted abundance in this sample."
+)
+# Add the grouping column's description by name (creates the element if
+# absent), rather than the group_column value doing double duty as both a
+# vector element and a lookup key.
+per_sample_column_descriptions[group_column] <- paste0("Sample's ", group_column, " level, joined in from data/metadata.tsv.")
+# Restrict to only the columns actually present, in case contrib_with_group's
+# exact column set differs slightly (e.g. an extra raw abundance column
+# carried through from the canonicalized contribution table).
+missing_generic_cols <- setdiff(colnames(contrib_with_group), names(per_sample_column_descriptions))
+if (length(missing_generic_cols) > 0) {
+  extra_descriptions <- setNames(
+    paste("Additional column carried through from contribution-table processing:", missing_generic_cols),
+    missing_generic_cols
+  )
+  per_sample_column_descriptions <- c(per_sample_column_descriptions, extra_descriptions)
+}
+
+group_summary_column_descriptions <- c(
+  function_id        = per_sample_column_descriptions[["function_id"]],
+  pathway_name       = per_sample_column_descriptions[["pathway_name"]],
+  taxon_label        = per_sample_column_descriptions[["taxon_label"]],
+  mean_contribution  = "Mean contribution across all samples in this Condition, including explicit zeros when the taxon did not contribute.",
+  sd_contribution     = "Sample standard deviation of contribution across all samples in this Condition, including explicit zeros.",
+  n_samples          = "Number of samples in this Condition contributing to mean_contribution/sd_contribution."
+)
+group_summary_column_descriptions[group_column] <- paste0(group_column, " level being summarized.")
+
+contribution_run_column_descriptions <- c(
+  Stage = "PICRUSt2 contribution-generation stage.",
+  `Run Status` = "Whether this notebook executed the stage or reused an already complete, verified contribution output.",
+  Command = "Fully resolved env/conda command configured for the stage; executed when Run Status says the stage ran.",
+  `Exit Code` = "Exit code reported by the command, or NA when an existing output was reused without execution.",
+  `Verified Output` = "TRUE when the expected canonical output file was found; a newly executed stage also requires a zero exit code.",
+  `Duration (minutes)` = "Wall-clock duration in minutes.",
+  `Output File` = "Expected output file produced by the stage.",
+  `PICRUSt2 Version` = "PICRUSt2 version used for contribution generation."
+)
+
+column_dictionary <- bind_rows(
+  # Build one dictionary block per exported sheet. The helper verifies that
+  # every real workbook column has exactly one explanation.
+  build_column_dictionary(
+    "PICRUSt2_Contribution_Run", as.data.frame(contribution_run_summary),
+    contribution_run_column_descriptions,
+    workbook_path = output_excel_path, rownames = FALSE
+  ),
+  build_column_dictionary("Metadata", as.data.frame(sample_metadata), metadata_column_descriptions,
+                           workbook_path = output_excel_path, rownames = FALSE),
+  build_column_dictionary(
+    "Pathway_Reference", as.data.frame(pathway_lookup),
+    c(function_id = per_sample_column_descriptions[["function_id"]],
+      pathway_name = per_sample_column_descriptions[["pathway_name"]]),
+    workbook_path = output_excel_path, rownames = FALSE
+  ),
+  build_column_dictionary("Taxon_Contributions_per_Sample", as.data.frame(contrib_with_group), per_sample_column_descriptions,
+                           workbook_path = output_excel_path, rownames = FALSE),
+  build_column_dictionary("Contribution_by_Condition", as.data.frame(group_contribution_summary), group_summary_column_descriptions,
+                           workbook_path = output_excel_path, rownames = FALSE)
+)
+
+add_sheet_to_excel(output_excel_path, "Column_Dictionary", column_dictionary,
+                   rownames = FALSE, overwrite = TRUE)
+
+cat("Column_Dictionary sheet added. Workbook complete at:\n", output_excel_path, "\n")
+render_output_links(output_excel_path, labels = "MetaCyc taxon contribution workbook (Excel)")
+```
+
+------------------------------------------------------------------------
+
+# KEGG Pathway Taxon Contributions
+
+PICRUSt2 does not emit a native stratified KEGG-pathway table. This chunk therefore uses the configured KEGG pathway IDs—or selects the most abundant pathways from Step 2 automatically—maps each pathway to its constituent KOs using `ggpicrust2`'s bundled reference, streams only those KOs from PICRUSt2's stratified KO contribution table, and sums their ASV contributions per pathway. Results are written independently under `results/5_taxon_contribution/KEGG/`.
+
+```{r run-kegg-taxon-contribution}
+# KEGG reuses the validated metadata, taxonomy, contribution-run provenance,
+# top-N settings, and heatmap ranks from the MetaCyc section. The helper handles
+# KO-to-pathway mapping, zero completion, summaries, plots, and workbook export.
+kegg_taxon_results <- run_kegg_taxon_contribution(
+  sample_metadata = sample_metadata,
+  group_column = group_column,
+  top_n_taxa = top_n_taxa,
+  community_run_dir = step2_run_dir,
+  contribution_run_dir = stratified_run_dir,
+  output_root_folder = output_root_folder,
+  pathway_ids = kegg_pathway_ids_of_interest,
+  auto_select_n_features = auto_select_n_features,
+  taxonomy_table = taxonomy_table,
+  tax_level = tax_level,
+  heatmap_tax_levels = heatmap_tax_levels,
+  step4_workbook = here(
+    results_folder, "4_functional_differential_abundance_analysis",
+    "functional_daa_summary_KEGG.xlsx"
+  ),
+  contribution_run_summary = contribution_run_summary
+)
+# Report stable IDs/names first, then link and embed every generated artifact.
+cat("KEGG pathways analyzed:\n")
+print(kegg_taxon_results$pathway_lookup)
+print(render_output_links(
+  c(kegg_taxon_results$workbook, kegg_taxon_results$heatmaps),
+  labels = c(
+    "KEGG taxon contribution workbook",
+    paste("Interactive KEGG", names(kegg_taxon_results$heatmaps),
+          "condition-split contribution heatmap")
+  )
+))
+htmltools::tagList(kegg_taxon_results$heatmap_widgets)
+```
+
+------------------------------------------------------------------------
+
+# Output File Summary
+
+The tree below lists every file this notebook has written to its own output folder, [results/5_taxon_contribution/](../../results/5_taxon_contribution/), as a clickable, portable link (relative to this notebook's own location) with a short description -- built live from what is actually on disk at knit time via the project's shared [render_output_tree_function.R](../functions/render_output_tree_function.R) helper, so it always matches this run's real output rather than a hand-maintained list.
+
+```{r output-summary, echo=FALSE}
+# Scan the managed output directory at render time rather than maintaining a
+# second hardcoded file list that can become stale.
+render_output_tree(
+  output_root_folder,
+  descriptions = c(
+    "KEGG" = "KEGG pathway taxon contribution workbook and plots",
+    "MetaCyc" = "MetaCyc pathway taxon contribution workbook and plots",
+    "stratified_pipeline" = "PICRUSt2 KO, EC, and MetaCyc contribution tables and logs"
+  )
+)
+```
+
+------------------------------------------------------------------------
+
+# Output Interpretation {#output-interpretation}
+
+-   **`Taxon_Contributions_per_Sample` sheet**: one row per (sample, function, taxon) triple — the finest-grained view, useful for custom downstream analysis.
+-   **`Pathway_Reference` or `Pathway_KO_Mapping` sheet**: the stable pathway identifier paired with its human-readable pathway name; the KEGG workbook additionally lists the constituent KOs used for aggregation.
+-   **`Contribution_by_Condition` sheet**: mean/SD contribution per named pathway and taxon within each `Condition`.
+-   **Interactive genus and phylum heatmaps**: taxa at the indicated rank are rows and pathway names are columns above the cells. Condition labels, the main plot title, and a subtitle defining the top-taxa cutoff occupy a reserved footer inside the plotting canvas; the y-axis title has added separation from its tick labels, and light-grey borders separate individual cells and frame each condition heatmap. The top N taxa are selected separately within each pathway and ranked from highest to lowest by predicted contribution summed across all samples. The heatmap displays the union of those pathway-specific lists, so it can contain more than N taxa in total. The `Other` aggregate is excluded before displayed taxa are converted to relative percentages. The closely spaced condition panels share the same rows, columns, and white-yellow-red scale; hover text preserves the stable pathway identifier. No hierarchical clustering is applied.
+
+------------------------------------------------------------------------
+
+# Recommended Next Step
+
+This is the final notebook in the PICRUSt2 workflow. The natural next steps happen outside this prediction pipeline: review the selected functions and their contributing taxa alongside the NSTI quality assessment, incorporate the exported workbooks and figures into a report, and validate biologically important candidates using an appropriate independent analysis.
+
+------------------------------------------------------------------------
+
+# Session Information
+
+This final chunk records the R version, platform, and attached package versions needed to reproduce the taxon contribution analysis environment.
+
+```{r session-info, echo=FALSE}
+# Capture R, platform, and attached-package versions in the executable report.
+sessionInfo()
+```
+
+------------------------------------------------------------------------
+
+# References
+
+## Methods
+
+-   Douglas GM, Maffei VJ, Zaneveld JR, et al. (2020). PICRUSt2 for prediction of metagenome functions. *Nat Biotechnol* 38, 685-688. <https://doi.org/10.1038/s41587-020-0548-6> — describes the stratified, per-ASV functional contribution output analyzed here.
+-   Yang C, Mai J, Cao X, Burberry A, Cominelli F, Zhang L. (2023). ggpicrust2: an R package for PICRUSt2 predicted functional profile analysis and visualization. *Bioinformatics* 39(8), btad470. <https://doi.org/10.1093/bioinformatics/btad470> — provides the KO-to-KEGG reference and conversion used for KEGG pathway contribution analysis.
+-   [data.table](https://cran.r-project.org/package=data.table) — provides `fread(cmd = ...)`, used for the streaming pre-filter of the multi-gigabyte stratified contribution files.
+
+## Related
+
+-   [Step 2 — PICRUSt2 Pipeline](2_picrust2_pipeline.md) — produces the community-level marker, KO, and EC prediction tables reused here.
+-   [Step 3 — NSTI Quality Assessment](3_nsti_quality_assessment.md) — assesses the prediction reliability that should accompany interpretation of the taxon contribution results.
+
+------------------------------------------------------------------------
+
+# Appendix: Troubleshooting Guide
+
+## Common Issues and Solutions
+
+### `metacyc_pathway_ids_of_interest is empty`
+
+**Cause**: No explicit IDs were supplied and the required Step 2 abundance table used for automatic selection was unavailable or contained no candidates.
+
+**Action**: Run Step 2 first, or edit `metacyc_pathway_ids_of_interest` in [Configuration](#adjust-analysis-parameters) to list the MetaCyc pathway IDs you want to analyze.
+
+### `The stream-filter matched zero rows`
+
+**Cause**: None of the requested MetaCyc IDs appear in the generated pathway contribution table's `function` column, most often because of a typo or IDs copied from a different database.
+
+**Action**: Spot-check one ID with `awk -F'\t' 'NR==1 || $2=="<your_id>"' <file>` directly in a terminal before re-running this notebook.
+
+### `awk: command not found`
+
+**Cause**: No `awk` on `PATH` — uncommon on Linux but possible in a minimal container or CI environment.
+
+**Action**: Install `awk` (for example, `gawk` via your package manager). The contribution table is compressed, so a full in-memory replacement is not recommended for large studies.
+
+### The configured taxonomy rank is not found
+
+**Cause**: `taxonomy_table_path` was missing, or `tax_level`/one of the entries in `heatmap_tax_levels` does not exactly match a column name in the supplied taxonomy table.
+
+**Action**: Copy a DADA2-compatible taxonomy table to `data/asv_taxonomy.csv`, inspect its header, and ensure it contains `ASV_ID`, `Genus`, and `Phylum` columns (or edit `heatmap_tax_levels` to ranks present in your table).
+
+### A Step 5 contribution output directory already exists
+
+**Cause**: Step 5 will not silently reuse an earlier contribution run because its inputs or parameters may differ from the current configuration.
+
+**Action**: Rename or remove `results/5_taxon_contribution/stratified_pipeline/` when you intend to generate a new run. To refresh the report from an already complete run, set `PICRUST2_REUSE_EXISTING_OUTPUTS=true`; the notebook verifies all three canonical KO, EC, and MetaCyc contribution outputs before reuse. A partial output set is never reused.

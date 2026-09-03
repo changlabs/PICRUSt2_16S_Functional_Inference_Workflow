@@ -1,0 +1,1836 @@
+---
+title: "Step 4: Functional Differential Abundance Analysis (Unstratified)"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    code_folding: show
+    df_print: paged
+  github_document:
+    toc: true
+    toc_depth: 3
+    html_preview: false
+---
+
+<!-- The hidden setup chunk below controls whether analysis code is executed. HTML reports run the workflow; GitHub Markdown remains a non-executing tutorial and code reference. -->
+
+```{r setup, include=FALSE}
+# Execute the workflow for HTML reports. The GitHub document is a code and
+# tutorial view; disabling evaluation there avoids rerunning analyses or
+# attempting to embed HTML widgets in plain Markdown.
+render_target <- knitr::opts_knit$get("rmarkdown.pandoc.to")
+knitr::opts_chunk$set(
+  eval = !(grepl("^gfm", render_target) || grepl("markdown_github", render_target, fixed = TRUE)),
+  #eval = FALSE,
+  echo = TRUE
+)
+```
+
+<!-- The hidden CSS chunk below affects only the rendered HTML report and is deliberately excluded from GitHub Markdown. -->
+
+```{css custom-styles, echo=FALSE, eval=identical(knitr::opts_knit$get("rmarkdown.pandoc.to"), "html")}
+/* Custom styling for improved readability */
+body {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+h1, h2, h3 {
+  color: #2c3e50;
+  margin-top: 1.5em;
+}
+
+/* Code and code-output font size is pinned explicitly (rather than left to
+   inherit from body) so that raising the prose size above does not also
+   enlarge code blocks, inline code, or printed console output -- those stay
+   at this project's original 14px regardless of any future prose-size
+   changes. */
+code {
+  background-color: #F2F2F2;
+  color: #2c3e50;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+pre, pre code {
+  font-size: 14px;
+}
+
+.alert-info {
+  background-color: #2c3e50;
+  color: #ffffff;
+  border-left: 4px solid #f39c12;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+.alert-warning {
+  background-color: #2c3e50;
+  color: #ffffff;
+  border-left: 4px solid #e74c3c;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+  border-left: 4px solid #28a745;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+/* Table cells wrap long content (long inline code, sentences) instead of
+   overflowing or forcing horizontal scroll. */
+table {
+  width: 100%;
+}
+
+th, td {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+```
+
+# Introduction
+
+## Purpose
+
+This notebook is **Step 4** of the PICRUSt2 workflow. It performs community-level (per-sample) functional differential abundance analysis (DAA) on the unstratified PICRUSt2 output from [Step 2](2_picrust2_pipeline.md) — asking which predicted pathways differ between study conditions and whether two complementary methods agree — using the [ggpicrust2](https://github.com/cafferychen777/ggpicrust2) R package.
+
+Every feature analyzed here is at **pathway level**, not gene level: MetaCyc pathways (computed natively by PICRUSt2) and KEGG pathways (derived from PICRUSt2's KO gene-family predictions by aggregation — see [Why Two Functional Levels?] below). Raw KO and EC gene-family abundances are not tested directly in this notebook.
+
+::: {.alert .alert-info}
+**Want to identify which taxa drive selected pathways?** [Step 5 — Taxon Contribution Analysis](5_taxon_contribution.md) traces selected MetaCyc and KEGG pathway predictions back to their contributing ASVs and taxonomy labels.
+:::
+
+## Why Two Functional Levels?
+
+-   **[MetaCyc](https://metacyc.org/) pathways** — PICRUSt2 computes these natively ([pathways_out/path_abun_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/pathways_out/path_abun_unstrat.tsv), via MinPath applied to its EC-number predictions). Annotation uses `ggpicrust2`'s bundled MetaCyc reference table; no internet access required.
+-   **[KEGG](https://www.genome.jp/kegg/pathway.html) pathways** — PICRUSt2 does **not** compute a KEGG-pathway abundance table directly; it only predicts per-KO (gene-family) abundance. `ggpicrust2::ko2kegg_abundance()` aggregates that KO table with the PICRUSt2-style upper-half mean *before* statistical testing, so DAA is run on pathways, never on individual KOs. Its `filter_for_prokaryotes = TRUE` option removes broad Organismal Systems and most Human Diseases categories, but it does **not** guarantee that every host-, eukaryote-, or virus-associated pathway map is absent: individual KOs are shared across pathway maps and across the tree of life. KEGG results therefore include explicit interpretation flags for configured host-associated maps and must be reviewed using their pathway name and hierarchy before biological reporting. Names and hierarchy classes come from `ggpicrust2`'s bundled KEGG reference, making conversion and annotation reproducible without live API calls.
+
+Neither level involves gene/enzyme-level (raw KO or EC) differential abundance testing.
+
+## Why LinDA and MaAsLin2?
+
+PICRUSt2 pathway abundances are **predicted functional profiles**, not directly observed pathway sequencing counts. Step 4 therefore excludes count-model methods that would require treating the mostly fractional predictions as observed integer counts, and it excludes LEfSe from significance testing. It retains two complementary sample-level approaches:
+
+-   **LinDA** applies a centered log-ratio transformation and bias correction designed for high-dimensional compositional abundance data.
+-   **MaAsLin2** applies total-sum scaling, an arcsine-square-root transformation, and a linear model. This provides a differently transformed regression analysis without adding another count-likelihood method.
+
+The methods are reported separately. `Method_Agreement` indicates whether both adjusted p-values pass the configured threshold; it is a convergence check, not a majority vote and not a new p-value. A pathway detected by only one method remains method-dependent. Neither method propagates uncertainty from PICRUSt2's genome-content prediction, so every result must be described as an association with **predicted functional potential**, not a measured pathway difference.
+
+Every DAA comparison is strictly two-condition: the reference `Condition` (marked `Reference = TRUE` in `data/metadata.tsv`) against exactly one other `Condition` at a time, repeated independently once per non-reference `Condition` level (see [Run the Selected DAA Methods]). The reference condition is the only condition any other condition is compared against.
+
+## Statistics and Calculations
+
+- **Prevalence filter:** by default, a pathway is tested only when its predicted
+  abundance is non-zero in at least `min_nonzero_samples` across the full
+  functional-level table. This pooled filter does not use condition labels and
+  retains possible presence/absence differences. Every workbook also reports
+  per-condition non-zero sample counts, prevalence percentages, structural-zero
+  flags, and below-threshold boundary-case flags. When
+  `strict_pairwise_prevalence_filter = TRUE`, each reference-versus-comparison
+  model additionally requires at least `min_nonzero_samples` non-zero values in
+  **each** of its two conditions; this stricter option is deliberately off by
+  default because it removes complete presence/absence contrasts.
+- **LinDA:** applies a centered log-ratio representation and estimates a
+  bias-corrected linear-model association appropriate for compositional
+  abundance profiles.
+- **MaAsLin2:** in this `ggpicrust2::pathway_daa()` workflow, applies
+  total-sum scaling, arcsine-square-root transformation, and a linear model.
+  It is retained as a complementary transformed regression approach rather
+  than a second count-likelihood model.
+- **Multiple testing:** raw p-values are adjusted with the configured
+  `p_adjust_method` (Benjamini-Hochberg by default) independently within each
+  method, functional level, and reference-versus-comparison call. Statistical
+  significance is based on the adjusted-p threshold, not the raw p-value. This
+  controls FDR within each such family; it does not provide one study-wide FDR
+  guarantee across both functional levels or across multiple comparisons.
+- **Descriptive effect summaries:** condition means and sample standard
+  deviations are calculated from retained predicted abundances. Relative
+  abundance divides each condition mean by the sum of retained pathway means
+  for that condition. The reported log2 fold-change is
+  `log2((comparison mean + pseudocount)/(reference mean + pseudocount))`, where
+  the pseudocount is half the smallest positive condition mean in that
+  functional level.
+- **Method agreement:** the two adjusted p-values remain separate.
+  `Method_Agreement` only describes whether zero, one, or both methods cross
+  the threshold; it is not a meta-analysis, combined p-value, or extra test.
+- **Sample size and power:** the condition sample counts are derived from
+  `data/metadata.tsv` and printed during the run. Small groups reduce power,
+  make sparse/boundary estimates less stable, and can produce fragile adjusted
+  p-values when hundreds of pathways are tested. Results from small cohorts
+  should be treated as hypothesis-generating until independently validated.
+- **KEGG interpretation:** `filter_for_prokaryotes = TRUE` reduces broad
+  eukaryotic/human categories but cannot establish that every retained map is a
+  biologically coherent bacterial pathway. Configured host-associated pathway
+  IDs are flagged, not silently deleted, so the underlying KO signal remains
+  auditable without inviting pathway-name over-interpretation.
+## Prerequisites
+
+Before running this notebook, ensure that:
+
+1.  Required R packages are installed — run [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R) once per R environment (this installs `ggpicrust2`, LinDA's `MicrobiomeStat` backend, and MaAsLin2 alongside the packages needed for the other workflow steps).
+2.  **[Step 2](2_picrust2_pipeline.md)** has been completed successfully, producing [pred_metagenome_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv) and [path_abun_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/pathways_out/path_abun_unstrat.tsv) in [results/2_picrust2_pipeline/picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/).
+3.  **[data/metadata.tsv](../../data/metadata.tsv)** has been filled in with real sample metadata (see [data/README.md](../../data/README.md)) — every sample in the PICRUSt2 output must have a matching row with a `Condition` value, and exactly one complete `Condition` must be marked `Reference = TRUE` (the reference/control condition every other condition is compared against; see [Load Metadata]).
+
+## What This Notebook Does
+
+1.  **Imports** the unstratified KO and MetaCyc pathway abundance tables produced by Step 2 and validates that every sample matches a row in [data/metadata.tsv](../../data/metadata.tsv).
+2.  **Prepares both functional levels**: the MetaCyc pathway table is used as-is; the KO table is converted to KEGG pathway abundance via `ggpicrust2::ko2kegg_abundance()`.
+3.  For **each** functional level, applies the pooled prevalence filter, computes condition-specific prevalence diagnostics, optionally applies the stricter prevalence requirement within each pairwise comparison, and removes any sample with zero variance across the retained features (a degenerate input that silently crashes several DAA backends if left in).
+4.  **Runs LinDA and MaAsLin2** for each level, as a series of strictly two-condition comparisons — the reference condition (derived from [data/metadata.tsv](../../data/metadata.tsv)'s `Reference` column; see [Load Metadata]) against exactly one other `Condition` at a time, repeated for every non-reference `Condition`. Any single (method, comparison) failure is caught, reported in the rendered notebook, and does not stop the other method or comparison from running.
+5.  **Annotates** every feature retained after prevalence filtering (once per feature, regardless of how many methods tested it) from `ggpicrust2`'s bundled MetaCyc or KEGG reference tables; KEGG annotations include an explicit interpretation flag and note for configured host-associated maps.
+6.  **Computes condition-wise summary statistics** (mean, SD, relative abundance, non-zero sample count, prevalence percentage, structural-zero/boundary flags, and log2 fold-change vs. the reference condition) driven entirely by [data/metadata.tsv](../../data/metadata.tsv)'s `Condition` column — no hardcoded sample-column positions.
+7.  **Builds one combined `Abundance_Summary` sheet**, one results sheet per DAA method, and a per-pathway `Method_Agreement` sheet containing both methods' adjusted p-values, significance codes, agreement status, and pairwise prevalence diagnostics.
+8.  **Exports** every table to two separate Excel workbooks, one per functional level, each with its own trailing `Column_Dictionary` sheet.
+
+## Expected Input
+
+-   [results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv) — per-sample KO abundance (converted to KEGG pathway abundance here).
+-   [results/2_picrust2_pipeline/picrust2_out_pipeline/pathways_out/path_abun_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/pathways_out/path_abun_unstrat.tsv) — per-sample MetaCyc pathway abundance.
+-   [data/metadata.tsv](../../data/metadata.tsv) — sample metadata with the required `SampleID`, `Condition`, and `Reference` columns.
+
+## Expected Output
+
+-   [results/4_functional_differential_abundance_analysis/functional_daa_summary_MetaCyc.xlsx](../../results/4_functional_differential_abundance_analysis/functional_daa_summary_MetaCyc.xlsx) — MetaCyc-level results: `Abundance_Summary`, `LinDA`, `Maaslin2`, `Method_Agreement`, and `Column_Dictionary`.
+-   [results/4_functional_differential_abundance_analysis/functional_daa_summary_KEGG.xlsx](../../results/4_functional_differential_abundance_analysis/functional_daa_summary_KEGG.xlsx) — the same set of sheets for the KEGG level.
+
+------------------------------------------------------------------------
+
+# Environment Setup
+
+## Load Required Packages {#load-packages}
+
+The chunk below loads every R package this notebook depends on -- principally [ggpicrust2](https://github.com/cafferychen777/ggpicrust2) for corrected KO-to-KEGG-pathway conversion, bundled pathway references, and the LinDA/MaAsLin2 `pathway_daa()` interface -- plus the helper functions shared across the workflow, each sourced from [R/functions/](../functions/).
+
+```{r load-packages, message=FALSE, warning=FALSE}
+# NOTE: This chunk assumes the packages below are already installed. If any
+# library() call fails with "there is no package called ...", run
+# setup/install_R_dependencies.R once to install every package this
+# workflow needs, then re-run this notebook.
+
+library(here)         # Project-relative file paths
+library(readr)        # Fast, consistent delimited-file import
+library(dplyr)         # Data manipulation grammar (filter/mutate/summarise/join)
+library(tidyr)         # Reshaping between wide and long formats
+library(tibble)        # Modern data frames with explicit rownames-as-column handling
+library(ggpicrust2)    # PICRUSt2 output analysis: ko2kegg_abundance(), pathway_daa(),
+                        # pathway_annotation().
+library(openxlsx)      # Excel file creation and manipulation
+
+# Version 2.5.16 fixes the broad KEGG Organismal Systems/Human Diseases filter
+# and the upper-half pathway-abundance calculation used below. Even current
+# releases can retain individual host/eukaryote/virus-associated maps outside
+# those broad categories; those are flagged explicitly during annotation.
+minimum_ggpicrust2_version <- package_version("2.5.16")
+if (packageVersion("ggpicrust2") < minimum_ggpicrust2_version) {
+  stop(
+    "Step 4 requires ggpicrust2 >= ", minimum_ggpicrust2_version,
+    " for corrected KEGG aggregation and prokaryote filtering. Installed: ",
+    packageVersion("ggpicrust2"), ". Re-run setup/install_R_dependencies.R."
+  )
+}
+
+# Source the custom Excel utility functions from the project's function library
+source(here("R", "functions", "add_sheet_to_excel_function.R"))
+source(here("R", "functions", "build_column_dictionary_function.R"))
+source(here("R", "functions", "render_output_links_function.R"))
+# Source the custom render_output_tree utility function from the project's
+# function library. This function prints this notebook's entire output
+# folder as a clickable directory tree (used in "Output File Summary" below),
+# scanned live from disk at knit time so it always matches what was actually
+# produced on this run.
+source(here("R", "functions", "render_output_tree_function.R"))
+```
+
+------------------------------------------------------------------------
+
+# Configuration
+
+## Adjust Analysis Parameters {#adjust-analysis-parameters}
+
+These are the settings you are most likely to want to change before running this notebook.
+
+```{r define-analysis-parameters}
+# ------------------------------------------------------------------
+# Functional levels to analyze. Both run by default (see "Why Two Functional
+# Levels?" above). Conversion and annotation use bundled local references, so
+# routine execution does not depend on a live KEGG API. Valid entries are
+# "MetaCyc" and "KEGG".
+# ------------------------------------------------------------------
+functional_levels_to_analyze <- c("MetaCyc", "KEGG")  # <-- EDIT to c("MetaCyc") or c("KEGG") to run only one
+
+# ------------------------------------------------------------------
+# Selected differential-abundance methods passed to
+# ggpicrust2::pathway_daa(), once per method and pairwise comparison.
+# This set is intentionally restricted to two complementary sample-level
+# approaches suitable for predicted compositional pathway profiles. Do not
+# add count-model or LEfSe methods to the significance agreement summary.
+# ------------------------------------------------------------------
+daa_methods_to_run <- c("LinDA", "Maaslin2")
+
+# ------------------------------------------------------------------
+# Comparison variable required by the workflow's documented metadata schema.
+# The reference/baseline level every
+# other condition is compared against is intentionally NOT set here: it is
+# derived automatically, in the Load Metadata step below, from
+# data/metadata.tsv's Reference column (TRUE for the reference condition's rows,
+# FALSE for every other row — see data/README.md). Declaring the reference
+# condition inside the metadata file itself, rather than as a notebook
+# parameter, means it can never silently drift out of sync with the data.
+# ------------------------------------------------------------------
+group_column <- "Condition"
+
+# ------------------------------------------------------------------
+# Multiple-testing correction method passed to p_adjust_method, and the
+# adjusted-p-value cutoff used for per-method significance and method
+# agreement. Asterisk codes retain their conventional fixed 0.05/0.01/0.001/
+# 0.0001 boundaries so their meaning does not change when the agreement
+# threshold is customized.
+# ------------------------------------------------------------------
+p_adjust_method       <- "BH"    # <-- EDIT: any method accepted by stats::p.adjust()
+significance_threshold <- 0.05   # <-- EDIT: adjusted-p-value cutoff for "significant"
+
+# ------------------------------------------------------------------
+# Minimum number of samples in which a feature must have a non-zero
+# abundance value to be retained by the pooled, condition-blind filter.
+# Applied independently per functional level, since MetaCyc and KEGG
+# prevalence can differ for the same sample set.
+# ------------------------------------------------------------------
+min_nonzero_samples <- 3  # <-- EDIT to make prevalence filtering stricter/looser
+
+# ------------------------------------------------------------------
+# Optional stricter filter applied independently inside each reference-versus-
+# comparison call. FALSE preserves possible presence/absence differences and
+# reports them with explicit prevalence/boundary flags. TRUE requires at least
+# min_nonzero_samples non-zero values in BOTH conditions before a feature is
+# passed to either DAA method for that comparison.
+# ------------------------------------------------------------------
+strict_pairwise_prevalence_filter <- FALSE  # <-- EDIT to TRUE for strict within-pair filtering
+
+# ------------------------------------------------------------------
+# KEGG maps that warrant explicit host/eukaryote/virus interpretation review
+# even after ggpicrust2's broad prokaryote filter. These maps are FLAGGED, not
+# deleted: shared KOs can be genuine microbial genes even when the pathway-map
+# label describes a host or viral process. Keep this documented vector current
+# if a different ggpicrust2/KEGG reference release is adopted.
+# ------------------------------------------------------------------
+kegg_host_associated_pathway_ids <- c(
+  "ko04330", # Notch signaling pathway
+  "ko04024", # cAMP signaling pathway
+  "ko04145", # Phagosome
+  "ko04148", # Efferocytosis
+  "ko03250"  # Viral life cycle - HIV-1
+)
+
+# Validate every configurable analysis setting before importing large tables.
+valid_functional_levels <- c("MetaCyc", "KEGG")
+invalid_functional_levels <- setdiff(
+  functional_levels_to_analyze, valid_functional_levels
+)
+if (length(functional_levels_to_analyze) == 0L ||
+    length(invalid_functional_levels) > 0L ||
+    anyDuplicated(functional_levels_to_analyze)) {
+  stop(
+    "functional_levels_to_analyze must contain unique entries from: ",
+    paste(valid_functional_levels, collapse = ", ")
+  )
+}
+required_daa_methods <- c("LinDA", "Maaslin2")
+if (!setequal(daa_methods_to_run, required_daa_methods) ||
+    length(daa_methods_to_run) != length(required_daa_methods)) {
+  stop(
+    "daa_methods_to_run is intentionally restricted to the two reliable, ",
+    "non-redundant methods: LinDA and Maaslin2."
+  )
+}
+if (!(p_adjust_method %in% stats::p.adjust.methods)) {
+  stop("p_adjust_method must be accepted by stats::p.adjust(); received: ",
+       p_adjust_method)
+}
+if (length(significance_threshold) != 1L || is.na(significance_threshold) ||
+    !is.finite(significance_threshold) || significance_threshold <= 0 ||
+    significance_threshold >= 1) {
+  stop("significance_threshold must be one finite number strictly between 0 and 1.")
+}
+if (length(min_nonzero_samples) != 1L || is.na(min_nonzero_samples) ||
+    !is.finite(min_nonzero_samples) || min_nonzero_samples < 1 ||
+    min_nonzero_samples != floor(min_nonzero_samples)) {
+  stop("min_nonzero_samples must be one positive whole number.")
+}
+if (!is.logical(strict_pairwise_prevalence_filter) ||
+    length(strict_pairwise_prevalence_filter) != 1L ||
+    is.na(strict_pairwise_prevalence_filter)) {
+  stop("strict_pairwise_prevalence_filter must be exactly TRUE or FALSE.")
+}
+if (anyDuplicated(kegg_host_associated_pathway_ids) ||
+    any(!grepl("^ko[0-9]{5}$", kegg_host_associated_pathway_ids))) {
+  stop(
+    "kegg_host_associated_pathway_ids must contain unique KEGG pathway IDs ",
+    "in ko##### format."
+  )
+}
+
+cat(
+  "Step 4 Configuration:\n",
+  "- Functional levels:", paste(functional_levels_to_analyze, collapse = ", "), "\n",
+  "- DAA methods:", paste(daa_methods_to_run, collapse = ", "), "\n",
+  "- Comparison column:", group_column, "\n",
+  "- Reference condition: (derived from data/metadata.tsv's Reference column in the Load Metadata step below)\n",
+  "- p-value adjustment:", p_adjust_method, "\n",
+  "- Significance threshold (adjusted p):", significance_threshold, "\n",
+  "- Minimum non-zero samples per feature:", min_nonzero_samples, "\n",
+  "- Strict pairwise prevalence filter:", strict_pairwise_prevalence_filter, "\n",
+  "- KEGG pathway IDs flagged for host/eukaryote/virus interpretation review:",
+  paste(kegg_host_associated_pathway_ids, collapse = ", "), "\n"
+)
+```
+
+## Define Path Parameters {#define-paths}
+
+This chunk resolves every input and output path relative to the project root via `here()`, creates this step's own output folder if it does not already exist, and fails fast with an informative error if Step 2's output or [data/metadata.tsv](../../data/metadata.tsv) cannot be found -- distinguishing a genuinely missing [Step 2](2_picrust2_pipeline.md) run from output that is still gzip-compressed, so the error message points at the real fix.
+
+```{r define-paths}
+# Base folders
+results_folder <- here("results")
+data_folder    <- here("data")
+
+# Step 2's output (this notebook's input)
+step2_output_folder <- here(results_folder, "2_picrust2_pipeline")
+step2_run_dir        <- here(step2_output_folder, "picrust2_out_pipeline")
+
+input_ko_path       <- here(step2_run_dir, "KO_metagenome_out", "pred_metagenome_unstrat.tsv")
+input_pathway_path  <- here(step2_run_dir, "pathways_out", "path_abun_unstrat.tsv")
+input_metadata_path <- here(data_folder, "metadata.tsv")
+
+# This notebook's own output folder.
+output_folder <- here(results_folder, "4_functional_differential_abundance_analysis")
+dir.create(output_folder, recursive = TRUE, showWarnings = FALSE)
+
+# One Excel workbook PER functional level, rather than a single combined
+# workbook, so MetaCyc and KEGG results can be opened, filtered, and shared
+# independently of one another.
+output_excel_path_by_level <- list(
+  MetaCyc = here(output_folder, "functional_daa_summary_MetaCyc.xlsx"),
+  KEGG = here(output_folder, "functional_daa_summary_KEGG.xlsx")
+)
+
+# Confirm the expected inputs actually exist before going any further.
+# picrust2_pipeline.py leaves both files gzip-compressed unless
+# decompress_output_files was TRUE in Step 2 — check for the .gz variant
+# too so the error message points at the real fix (decompress, don't re-run
+# Step 2) rather than implying the run itself is missing.
+check_input_exists <- function(path, step_label) {
+  if (file.exists(path)) return(invisible(TRUE))
+  gz_path <- paste0(path, ".gz")
+  if (file.exists(gz_path)) {
+    stop(
+      "Found a compressed but not decompressed input: ", gz_path, "\n",
+      "Re-run Step 2 with decompress_output_files <- TRUE, or manually ",
+      "decompress this file, then re-run this notebook."
+    )
+  }
+  stop(
+    "Could not find the expected input file: ", path, "\n",
+    "Run Step 2 (2_picrust2_pipeline.Rmd) first."
+  )
+}
+check_input_exists(input_ko_path, "Step 2")
+check_input_exists(input_pathway_path, "Step 2")
+if (!file.exists(input_metadata_path)) {
+  stop(
+    "Could not find the metadata file: ", input_metadata_path, "\n",
+    "See data/README.md for the required format."
+  )
+}
+
+cat(
+  "Path Configuration:\n",
+  "- KO abundance input:", input_ko_path, "\n",
+  "- MetaCyc pathway abundance input:", input_pathway_path, "\n",
+  "- Metadata input:", input_metadata_path, "\n",
+  "- Output folder:", output_folder, "\n"
+)
+```
+
+------------------------------------------------------------------------
+
+# Import and Validate Input Data
+
+## Load Metadata {#load-metadata}
+
+This chunk reads [data/metadata.tsv](../../data/metadata.tsv) and validates it thoroughly before anything downstream uses it: confirms the required `SampleID`, `Condition`, and `Reference` columns are present, coerces `Reference` to logical, checks that every `Condition` is internally consistent (wholly reference or wholly not), and confirms exactly one `Condition` is marked as the reference -- since every DAA comparison in this notebook is built around that single reference `Condition` (see [Why LinDA and MaAsLin2?] above).
+
+```{r load-metadata}
+sample_metadata <- read_tsv(input_metadata_path, show_col_types = FALSE, trim_ws = TRUE)
+
+required_metadata_columns <- c("SampleID", group_column, "Reference")
+missing_metadata_columns <- setdiff(
+  required_metadata_columns, colnames(sample_metadata)
+)
+if (length(missing_metadata_columns) > 0L) {
+  stop(
+    "data/metadata.tsv is missing required column(s): ",
+    paste(missing_metadata_columns, collapse = ", "),
+    ". Expected: ", paste(required_metadata_columns, collapse = ", ")
+  )
+}
+unexpected_metadata_columns <- setdiff(
+  colnames(sample_metadata), required_metadata_columns
+)
+if (length(unexpected_metadata_columns) > 0L) {
+  stop(
+    "data/metadata.tsv must use the simplified three-column schema exactly. ",
+    "Unexpected column(s): ", paste(unexpected_metadata_columns, collapse = ", "),
+    ". Expected: ", paste(required_metadata_columns, collapse = ", ")
+  )
+}
+
+if (anyDuplicated(sample_metadata$SampleID)) {
+  stop("data/metadata.tsv contains duplicate SampleID values; each sample must occur exactly once.")
+}
+if (any(is.na(sample_metadata$SampleID) | trimws(sample_metadata$SampleID) == "")) {
+  stop("data/metadata.tsv contains an empty SampleID value.")
+}
+if (any(is.na(sample_metadata[[group_column]]) | trimws(sample_metadata[[group_column]]) == "")) {
+  stop("data/metadata.tsv contains an empty ", group_column, " value.")
+}
+# read_tsv() already parses an unquoted TRUE/FALSE column as logical; coerce
+# defensively in case the source file wrote it as a quoted string, "True"/
+# "False", or 1/0 instead.
+reference_group_flag <- if (is.logical(sample_metadata$Reference)) {
+  sample_metadata$Reference
+} else {
+  as.logical(sample_metadata$Reference)
+}
+if (any(is.na(reference_group_flag))) {
+  stop(
+    "data/metadata.tsv's 'Reference' column contains value(s) that could not ",
+    "be interpreted as TRUE/FALSE. Use exactly TRUE or FALSE for every row -- ",
+    "see data/README.md."
+  )
+}
+sample_metadata$Reference <- reference_group_flag
+
+# Every row of a given Condition must agree on Reference -- a Condition is
+# either wholly the reference or wholly not. Catch a partially-marked Condition
+# here with a clear error rather than silently deriving an inconsistent
+# reference_group downstream.
+reference_flag_by_group <- sample_metadata %>%
+  group_by(.data[[group_column]]) %>%
+  summarise(n_distinct_flags = n_distinct(Reference), .groups = "drop")
+inconsistent_groups <- reference_flag_by_group[[group_column]][reference_flag_by_group$n_distinct_flags > 1]
+if (length(inconsistent_groups) > 0) {
+  stop(
+    "data/metadata.tsv's 'Reference' column is not consistent within ", group_column,
+    " group(s): ", paste(inconsistent_groups, collapse = ", "),
+    ". Every row of a given ", group_column, " must share the same Reference value -- ",
+    "see data/README.md."
+  )
+}
+
+# Exactly one Condition must be marked as the reference condition.
+groups_marked_as_reference <- unique(sample_metadata[[group_column]][sample_metadata$Reference])
+if (length(groups_marked_as_reference) == 0) {
+  stop(
+    "No ", group_column, " is marked Reference = TRUE in data/metadata.tsv. ",
+    "Exactly one ", group_column, " must be the reference condition -- see data/README.md."
+  )
+}
+if (length(groups_marked_as_reference) > 1) {
+  stop(
+    "More than one ", group_column, " is marked Reference = TRUE in data/metadata.tsv: ",
+    paste(groups_marked_as_reference, collapse = ", "),
+    ". Exactly one ", group_column, " must be the reference condition -- see data/README.md."
+  )
+}
+
+# The single Condition marked Reference = TRUE becomes the reference/
+# control level every other Condition is compared against throughout this
+# notebook -- and, per the pairwise DAA design below (see [Run All
+# Requested DAA Methods]), the only condition every other condition is ever
+# compared to (no comparison skips the reference condition).
+reference_group <- groups_marked_as_reference
+
+# ggpicrust2's pathway_daa() (which receives the full metadata data frame,
+# rather than a single extracted vector) needs a sample-identifier column
+# to match metadata rows against abundance-table columns. The CRAN release
+# of ggpicrust2 (installed by setup/install_R_dependencies.R) still
+# hard-requires that column to be named exactly `sample_name`; it does not
+# yet accept `SampleID` even though `SampleID` is this workflow's own
+# metadata standard (see data/README.md). Add a `sample_name` mirror of
+# `SampleID` here, once, so every downstream call (both functional levels)
+# has it available without duplicating this fix at each call site.
+sample_metadata$sample_name <- sample_metadata$SampleID
+
+group_sample_counts <- table(sample_metadata[[group_column]])
+if (strict_pairwise_prevalence_filter &&
+    any(group_sample_counts < min_nonzero_samples)) {
+  undersized_groups <- names(group_sample_counts)[
+    group_sample_counts < min_nonzero_samples
+  ]
+  stop(
+    "strict_pairwise_prevalence_filter = TRUE requires at least ",
+    min_nonzero_samples, " samples in every condition. Undersized condition(s): ",
+    paste0(undersized_groups, " (n=", group_sample_counts[undersized_groups], ")",
+           collapse = ", "), "."
+  )
+}
+
+cat(
+  "Metadata loaded:", nrow(sample_metadata), "samples,",
+  length(unique(sample_metadata[[group_column]])), "unique", group_column, "levels:\n",
+  paste(" -", table(sample_metadata[[group_column]])[unique(sample_metadata[[group_column]])],
+        unique(sample_metadata[[group_column]]), collapse = "\n"), "\n",
+  "- Reference/baseline condition (from the Reference column):", reference_group, "\n",
+  "- Statistical-power note: condition sample sizes are ",
+  paste0(names(group_sample_counts), " n=", as.integer(group_sample_counts),
+         collapse = "; "),
+  ". Small groups reduce power and make sparse/boundary estimates less stable; ",
+  "treat discoveries as hypothesis-generating when replication is limited.\n",
+  sep = ""
+)
+```
+
+## Load KO and MetaCyc Pathway Abundance Tables {#load-abundance}
+
+This chunk imports PICRUSt2's two native output tables -- the per-sample KO abundance table (aggregated to KEGG pathway level below) and the per-sample MetaCyc pathway abundance table -- stripping the `ko:` prefix PICRUSt2 adds to KO identifiers so it matches what `ko2kegg_abundance()` expects.
+
+```{r load-abundance-tables}
+# Read PICRUSt2's native tab-separated output. The first column is the
+# feature identifier ("function" for KO, "pathway" for MetaCyc); every
+# remaining column is one sample's abundance.
+ko_abundance_raw <- read_tsv(input_ko_path, show_col_types = FALSE)
+
+# PICRUSt2's default KO reference database prefixes each KO identifier with
+# "ko:" (e.g. "ko:K00001"); strip it so ko2kegg_abundance()'s internal
+# KO-to-pathway mapping (which expects the bare "K00001" form) matches.
+ko_abundance_raw[[1]] <- gsub("^ko:", "", ko_abundance_raw[[1]])
+
+pathway_abundance_raw <- read_tsv(input_pathway_path, show_col_types = FALSE)
+
+cat(
+  "Abundance Tables Loaded:\n",
+  "- KO table (input to KEGG pathway conversion):", nrow(ko_abundance_raw), "KOs x",
+  ncol(ko_abundance_raw) - 1, "samples\n",
+  "- MetaCyc pathway table:", nrow(pathway_abundance_raw), "pathways x",
+  ncol(pathway_abundance_raw) - 1, "samples\n"
+)
+```
+
+## Validate Sample ID Consistency {#validate-samples}
+
+This chunk confirms that the sample identifiers in both abundance tables exactly match [data/metadata.tsv](../../data/metadata.tsv)'s `SampleID` column, so a mismatch is caught here with a clear message rather than surfacing later as a cryptic error inside `pathway_daa()`.
+
+```{r validate-sample-ids}
+# Sample columns are every column except the first (feature ID) column, in
+# both abundance tables — validate both against metadata so a mismatch in
+# either one is caught here rather than surfacing as a cryptic downstream
+# error inside pathway_daa().
+abundance_sample_ids <- colnames(ko_abundance_raw)[-1]
+pathway_sample_ids   <- colnames(pathway_abundance_raw)[-1]
+metadata_sample_ids  <- sample_metadata$SampleID
+
+report_sample_mismatch <- function(observed, expected, source_label) {
+  missing_from_metadata <- setdiff(observed, expected)
+  missing_from_source    <- setdiff(expected, observed)
+  if (length(missing_from_metadata) == 0 && length(missing_from_source) == 0) {
+    return(invisible(TRUE))
+  }
+  stop(
+    source_label, " sample IDs do not exactly match data/metadata.tsv's SampleID column.\n",
+    if (length(missing_from_metadata) > 0)
+      paste0("  In ", source_label, " but missing from metadata: ",
+             paste(missing_from_metadata, collapse = ", "), "\n") else "",
+    if (length(missing_from_source) > 0)
+      paste0("  In metadata but missing from ", source_label, ": ",
+             paste(missing_from_source, collapse = ", "), "\n") else "",
+    "Fix data/metadata.tsv (or confirm you are pointing at the correct Step 2 run) before proceeding."
+  )
+}
+report_sample_mismatch(abundance_sample_ids, metadata_sample_ids, "KO abundance table")
+report_sample_mismatch(pathway_sample_ids, metadata_sample_ids, "MetaCyc pathway abundance table")
+
+cat("Sample ID validation passed: all", length(metadata_sample_ids),
+    "samples match exactly between metadata and both abundance tables.\n")
+```
+
+------------------------------------------------------------------------
+
+# Prepare Both Functional Abundance Matrices {#prepare-functional-abundance}
+
+This chunk builds the two abundance matrices each functional level's DAA methods will actually be run on: the MetaCyc pathway table reshaped with feature IDs as row names, and the KEGG pathway table produced by aggregating the KO table with `ggpicrust2::ko2kegg_abundance()` (see [Why Two Functional Levels?] above). Only the levels listed in `functional_levels_to_analyze` are kept for the analysis that follows.
+
+```{r prepare-functional-abundance}
+# MetaCyc: convert the tibble (feature-ID column + sample columns) into a
+# data frame with feature IDs as rownames — the format pathway_daa()
+# expects for `abundance`.
+metacyc_abundance_raw <- pathway_abundance_raw %>%
+  column_to_rownames(var = colnames(pathway_abundance_raw)[1]) %>%
+  as.data.frame()
+
+# KEGG: aggregate KO predictions with the corrected PICRUSt2-style upper-half
+# mean and request ggpicrust2's broad prokaryote filter. This removes
+# Organismal Systems and most Human Diseases maps, but cannot guarantee that
+# every host/eukaryote/virus-associated map is absent; explicit interpretation
+# flags are added during annotation below. The arguments are written explicitly
+# so neither aggregation nor broad filtering can change silently if package
+# defaults change in a future release.
+kegg_abundance_raw <- ko2kegg_abundance(
+  data                    = as.data.frame(ko_abundance_raw),
+  method                  = "abundance",
+  filter_for_prokaryotes  = TRUE,
+  progress                = FALSE
+)
+
+functional_abundance_by_level <- list(
+  MetaCyc = metacyc_abundance_raw,
+  KEGG    = kegg_abundance_raw
+)
+functional_abundance_by_level <- functional_abundance_by_level[functional_levels_to_analyze]
+
+for (level_name in names(functional_abundance_by_level)) {
+  cat(
+    level_name, "abundance matrix prepared:",
+    nrow(functional_abundance_by_level[[level_name]]), "features x",
+    ncol(functional_abundance_by_level[[level_name]]), "samples\n"
+  )
+}
+```
+
+------------------------------------------------------------------------
+
+# Analysis Functions {#analysis-functions}
+
+The functions below implement this notebook's per-functional-level pipeline (prevalence filtering, degenerate-sample removal, two-method DAA, annotation, and agreement reporting) once, so the MetaCyc and KEGG runs call identical logic.
+
+## Run the Selected DAA Methods {#fn-run-daa}
+
+The chunk below defines `run_daa_across_methods()`, this notebook's core orchestration function: for each non-reference `Condition` it restricts the data to a clean two-condition subset, runs every requested DAA method against that subset, and standardizes each method's result to a common column set before returning it. The backend fields are named `group1` and `group2`; the code comments explain why those API fields are relabeled from the comparison explicitly rather than trusted as returned.
+
+```{r define-run-daa-across-methods}
+# run_daa_across_methods()
+#
+# Runs one DAA call per requested method, once per non-reference Condition --
+# i.e. every comparison this notebook ever performs is the reference Condition
+# (from data/metadata.tsv's Reference column) against exactly one
+# other Condition, on a sample subset restricted to just those two Conditions. The
+# reference Condition is therefore the ONLY Condition every other Condition is ever
+# compared against; there is never a condition comparison that skips
+# it, and no single DAA call ever sees more than two Condition levels at once.
+# Both selected methods go through ggpicrust2::pathway_daa(). This
+# two-conditions-at-a-time restriction gives both methods the same comparison
+# structure. Restricting every call's
+# `metadata`/`abundance` to only the two Conditions under comparison -- and
+# dropping unused factor levels from the subset -- guarantees every
+# backend always sees a clean two-level factor, regardless of how many
+# Condition levels exist in the full dataset.
+#
+# IMPORTANT -- group1/group2 are always overwritten with the known
+# `reference`/`comparison_group` values from this loop, never trusted from
+# a backend's own returned data frame. ggpicrust2::pathway_daa() correctly
+# relevels the Condition factor for the STATISTICAL model in every backend (so
+# p-values are unaffected), but several backends' own result-table
+# construction labels the output group1/group2 columns from a stale,
+# pre-relevel, alphabetically-sorted factor-levels vector instead of the
+# actual releveled factor or the `reference` argument itself. Left
+# uncorrected, this
+# silently mislabels which Condition is "reference" and which is "comparison"
+# for every other method, which is what caused the reference condition to
+# appear as the wrong Condition in exported sheets, the log2FoldChange join below to
+# produce all-NA log2FoldChange for every affected method, and (because it also
+# broke Feature_ID x Condition uniqueness) the Method_Agreement
+# pivot_wider() step in Export to error with "Can't convert `fill`
+# <character> to <list>". Since this notebook already knows both Conditions
+# involved in every call (it constructed the two-condition subset itself),
+# there is no need to trust the backend's own labeling at all.
+#
+# Each tryCatch()-wrapped (method, comparison Condition) call failing does not
+# abort any other method or comparison.
+#
+# Every backend's raw result is also restricted to a fixed canonical column
+# set (feature, group1, group2, method, DAA_Submethod, p_values, p_adjust,
+# adj_method) before being stored. pathway_daa() otherwise passes through
+# whatever extra, backend-native columns the underlying package's own result
+# object happens to carry unchanged. Left unrestricted, bind_rows() below unions these
+# per-backend columns across every method's rows: a column that only exists
+# natively for one backend ends up populated for that backend's rows and NA
+# for every other method's rows once combined -- indistinguishable, in the
+# exported workbook, from a genuinely broken column. This notebook already
+# computes its own method-independent log2FoldChange from condition mean
+# abundances (see process_functional_level() below), so no backend-native
+# fold-change-like column is ever needed downstream; restricting to the
+# canonical set here drops them before they can leak into any exported sheet.
+#
+# Returns a list with:
+#   $results  — a single row-bound data frame of every successful (method,
+#               comparison Condition) call's result, restricted to the canonical
+#               columns above (group1 is always the reference Condition, group2
+#               is always that call's comparison Condition -- see the IMPORTANT
+#               note above), with two further changes: a new DAA_Submethod
+#               column preserves the original backend label, and 'method'
+#               itself is overwritten with the clean requested method name.
+#   $failures — a data frame (DAA_Method, Condition, Error_Message) recording
+#               which (method, comparison Condition) pair(s) failed and the R
+#               error message for reporting in the rendered notebook.
+run_daa_across_methods <- function(abundance, metadata, group, methods,
+                                    p_adjust_method, reference,
+                                    min_nonzero_samples,
+                                    strict_pairwise_prevalence_filter) {
+  non_reference_groups <- setdiff(sort(unique(metadata[[group]])), reference)
+  if (length(non_reference_groups) == 0) {
+    stop("No non-reference ", group, " levels remain to compare against the reference (\"", reference, "\").")
+  }
+
+  results_list  <- list()
+  failures_list <- list()
+
+  for (comparison_group in non_reference_groups) {
+
+    # Restrict to exactly this pair of Conditions' samples, and drop any unused
+    # factor levels by coercing back to character -- this is what
+    # guarantees every DAA backend below sees a clean, dichotomous grouping
+    # variable no matter how many Condition levels the full dataset has.
+    pair_metadata <- metadata[metadata[[group]] %in% c(reference, comparison_group), , drop = FALSE]
+    pair_metadata[[group]] <- as.character(pair_metadata[[group]])
+    rownames(pair_metadata) <- pair_metadata$sample_name
+    pair_abundance <- abundance[, colnames(abundance) %in% pair_metadata$sample_name, drop = FALSE]
+
+    # Optional strict pairwise prevalence filter. This happens after the pooled
+    # condition-blind filter and is recomputed separately for this exact pair,
+    # so an unrelated third condition cannot remove a feature from the current
+    # comparison. The same filtered matrix is passed to both methods.
+    if (strict_pairwise_prevalence_filter) {
+      reference_samples <- pair_metadata$sample_name[
+        pair_metadata[[group]] == reference
+      ]
+      comparison_samples <- pair_metadata$sample_name[
+        pair_metadata[[group]] == comparison_group
+      ]
+      reference_nonzero <- rowSums(
+        pair_abundance[, reference_samples, drop = FALSE] != 0
+      )
+      comparison_nonzero <- rowSums(
+        pair_abundance[, comparison_samples, drop = FALSE] != 0
+      )
+      pairwise_keep <-
+        reference_nonzero >= min_nonzero_samples &
+        comparison_nonzero >= min_nonzero_samples
+      cat(
+        "    Strict pairwise prevalence filter for ", reference, " vs. ",
+        comparison_group, ": ", nrow(pair_abundance), " -> ",
+        sum(pairwise_keep), " features retained.\n", sep = ""
+      )
+      pair_abundance <- pair_abundance[pairwise_keep, , drop = FALSE]
+    }
+
+    for (daa_method_name in methods) {
+      cat("    Running DAA method:", daa_method_name, "vs.", comparison_group, "... ")
+
+      daa_attempt <- tryCatch(
+        {
+          raw_result <- pathway_daa(
+            abundance  = pair_abundance,
+            metadata   = pair_metadata,
+            group      = group,
+            daa_method = daa_method_name,
+            select     = NULL,
+            p.adjust   = p_adjust_method,
+            reference  = reference
+          )
+          list(success = TRUE, data = raw_result, error = NULL)
+        },
+        error = function(e) list(success = FALSE, data = NULL, error = conditionMessage(e))
+      )
+
+      result_key <- paste(daa_method_name, comparison_group, sep = " vs. ")
+      if (daa_attempt$success) {
+        cat("OK (", nrow(daa_attempt$data), "rows)\n")
+
+        cleaned <- daa_attempt$data
+        cleaned$DAA_Submethod <- cleaned$method
+        cleaned$method <- daa_method_name
+
+        # Always overwrite group1/group2 with the known reference/
+        # comparison_group values from this loop -- see the IMPORTANT note
+        # above the function docstring for why the backend's own output
+        # labels cannot be trusted here.
+        cleaned$group1 <- reference
+        cleaned$group2 <- comparison_group
+
+        # Restrict to the canonical column set (see the function docstring
+        # above) so backend-native extra columns cannot leak into bind_rows().
+        # Any missing canonical column is added as NA so both methods
+        # contribute the identical column set.
+        canonical_daa_columns <- c(
+          "feature", "group1", "group2", "method", "DAA_Submethod",
+          "p_values", "p_adjust", "adj_method"
+        )
+        missing_canonical_columns <- setdiff(canonical_daa_columns, colnames(cleaned))
+        for (missing_column in missing_canonical_columns) {
+          cleaned[[missing_column]] <- NA
+        }
+        cleaned <- cleaned[, canonical_daa_columns, drop = FALSE]
+
+        results_list[[result_key]] <- cleaned
+      } else {
+        cat("FAILED:", daa_attempt$error, "\n")
+        failures_list[[result_key]] <- data.frame(
+          DAA_Method    = daa_method_name,
+          Condition         = comparison_group,
+          Error_Message = daa_attempt$error,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+
+  list(
+    results  = if (length(results_list) > 0) bind_rows(results_list) else NULL,
+    failures = if (length(failures_list) > 0) bind_rows(failures_list) else
+      data.frame(DAA_Method = character(0), Condition = character(0), Error_Message = character(0), stringsAsFactors = FALSE)
+  )
+}
+```
+
+## Annotate Every Tested Feature Once {#fn-annotate}
+
+The first chunk builds a one-row-per-pathway lookup from the KEGG hierarchy bundled with `ggpicrust2`. The second dispatches KEGG and MetaCyc features to their respective bundled references. No network access is required.
+
+```{r define-annotate-kegg-pathways}
+# annotate_kegg_pathways()
+#
+# Uses the corrected long-format ko_to_kegg_reference bundled with
+# ggpicrust2 >= 2.5.16. The hierarchy prefixes (e.g. "09100 ") are removed
+# from the exported class labels while the stable koXXXXX pathway ID is
+# retained as `feature` for joins to the DAA output.
+annotate_kegg_pathways <- function(pathway_ids,
+                                   host_associated_pathway_ids) {
+  # Load the package data into the current function environment. The lookup is
+  # local and versioned with ggpicrust2, so routine annotation is reproducible
+  # and does not depend on a live KEGG request.
+  data("ko_to_kegg_reference", package = "ggpicrust2", envir = environment())
+  reference <- as.data.frame(ko_to_kegg_reference)
+
+  # Validate the reference schema explicitly because upstream package-data
+  # changes would otherwise create partially annotated output without a clear
+  # explanation of which required field disappeared.
+  required_reference_columns <- c(
+    "pathway_id", "pathway_number", "pathway_name", "level1", "level2"
+  )
+  missing_reference_columns <- setdiff(required_reference_columns, colnames(reference))
+  if (length(missing_reference_columns) > 0) {
+    stop(
+      "ggpicrust2's bundled ko_to_kegg_reference is missing required column(s): ",
+      paste(missing_reference_columns, collapse = ", "),
+      ". Re-run setup/install_R_dependencies.R to install a current release."
+    )
+  }
+
+  # Reduce the long pathway-to-KO reference to one descriptive row per pathway.
+  # Numeric hierarchy prefixes are removed from labels while the stable KEGG
+  # pathway and map identifiers remain available for joins and auditing.
+  annotation_lookup <- reference %>%
+    select(all_of(required_reference_columns)) %>%
+    distinct() %>%
+    transmute(
+      feature             = pathway_id,
+      pathway_name        = pathway_name,
+      pathway_class       = sub("^\\d+\\s+", "", level1),
+      pathway_subclass    = sub("^\\d+\\s+", "", level2),
+      pathway_map         = paste0("map", pathway_number)
+    ) %>%
+    mutate(
+      # Broad host/eukaryote/virus-associated categories can share genuine
+      # microbial KOs. Flag them for interpretation rather than deleting the
+      # underlying prediction and hiding why it appeared.
+      requires_organism_appropriateness_review =
+        feature %in% host_associated_pathway_ids |
+        pathway_class == "Organismal Systems" |
+        pathway_subclass == "Information processing in viruses",
+      organism_appropriateness_note = ifelse(
+        requires_organism_appropriateness_review,
+        paste0(
+          "Review before biological interpretation: this KEGG map is host-, ",
+          "eukaryote-, or virus-associated. Shared KOs may still be genuine ",
+          "microbial genes, but the map name is not direct evidence that the ",
+          "named host/viral process occurs in the microbial community."
+        ),
+        paste0(
+          "No specific host/eukaryote/virus warning was configured for this ",
+          "map; it still represents predicted functional potential and should ",
+          "be interpreted with its KEGG hierarchy."
+        )
+      )
+    ) %>%
+    distinct(feature, .keep_all = TRUE)
+
+  # Start from the requested IDs so unmatched pathways remain visible as rows
+  # with missing annotations instead of being silently dropped by an inner join.
+  annotated <- tibble(feature = unique(pathway_ids)) %>%
+    left_join(annotation_lookup, by = "feature")
+
+  n_missing <- sum(is.na(annotated$pathway_name))
+  n_flagged <- sum(
+    annotated$requires_organism_appropriateness_review,
+    na.rm = TRUE
+  )
+  cat(
+    "    KEGG pathway annotation: ", nrow(annotated),
+    " pathway(s) matched against the bundled reference; ", n_missing,
+    " missing a name; ", n_flagged,
+    " flagged for organism-appropriateness review.\n", sep = ""
+  )
+  annotated
+}
+```
+
+This chunk defines a single annotation dispatcher so the main analysis can request standardized feature annotations without duplicating KEGG- and MetaCyc-specific logic.
+
+```{r define-build-annotation-lookup}
+# build_annotation_lookup()
+#
+# Returns one row per unique feature_id with annotation columns, dispatching
+# by functional level:
+#   - KEGG: annotate_kegg_pathways() above (bundled local KEGG hierarchy).
+#   - MetaCyc: ggpicrust2::pathway_annotation()'s bundled local MetaCyc
+#     reference table. Since pathway_annotation() looks up
+#     daa_results_df$feature internally, this still needs one representative
+#     row per feature from daa_results_combined (the row with the smallest
+#     adjusted p-value across methods) as its input, purely to satisfy that
+#     function's expected input shape.
+build_annotation_lookup <- function(feature_ids, functional_level,
+                                    daa_results_combined,
+                                    host_associated_pathway_ids) {
+  if (functional_level == "KEGG") {
+    return(annotate_kegg_pathways(
+      feature_ids,
+      host_associated_pathway_ids = host_associated_pathway_ids
+    ))
+  }
+
+  # `pathway_annotation()` expects DAA-shaped input even though only the feature
+  # identifier is needed for lookup. Select one deterministic row per feature,
+  # preferring the smallest available adjusted p-value across methods.
+  representative_rows <- daa_results_combined %>%
+    mutate(.p_adjust_numeric = suppressWarnings(as.numeric(p_adjust))) %>%
+    group_by(feature) %>%
+    arrange(is.na(.p_adjust_numeric), .p_adjust_numeric, .by_group = TRUE) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(-.p_adjust_numeric) %>%
+    as.data.frame()
+
+  annotated <- pathway_annotation(pathway = "MetaCyc", daa_results_df = representative_rows, ko_to_kegg = FALSE)
+  # Return only the stable feature key plus newly added annotation fields; DAA
+  # columns are joined from the canonical result table elsewhere.
+  new_annotation_columns <- setdiff(colnames(annotated), colnames(representative_rows))
+  annotated[, c("feature", new_annotation_columns), drop = FALSE]
+}
+```
+
+## Process One Functional Level End-to-End {#fn-process-level}
+
+The chunk below defines `process_functional_level()`, which chains together every step above into this notebook's full per-level pipeline -- prevalence filtering, degenerate-sample removal, two-method DAA, annotation, condition-wise summary statistics, log2 fold-change, and a per-feature-per-comparison agreement summary -- and returns a single list holding every table the Export section further down needs.
+
+```{r define-process-functional-level}
+# process_functional_level()
+#
+# Runs this notebook's full per-level pipeline: prevalence filtering,
+# degenerate-sample removal, two-method DAA (via run_daa_across_methods()),
+# annotation (via build_annotation_lookup()), condition-wise summary
+# statistics, log2 fold-change, and a per-feature-per-comparison agreement
+# summary. Returns a named list holding
+# every intermediate and final table the Export section below needs, so
+# that section never recomputes anything.
+process_functional_level <- function(level_name, abundance_raw, full_metadata,
+                                      group_column, reference_group, daa_methods,
+                                      p_adjust_method, significance_threshold,
+                                      min_nonzero_samples,
+                                      strict_pairwise_prevalence_filter,
+                                      host_associated_pathway_ids) {
+
+  cat("\nProcessing functional level:", level_name, "\n")
+
+  # ---- Prevalence filtering ---------------------------------------------
+  feature_nonzero_sample_counts <- rowSums(abundance_raw != 0)
+  low_prevalence_features <- rownames(abundance_raw)[feature_nonzero_sample_counts < min_nonzero_samples]
+  filtered_abundance <- abundance_raw[feature_nonzero_sample_counts >= min_nonzero_samples, , drop = FALSE]
+
+  cat(
+    "Prevalence filtering:", nrow(abundance_raw), "->", nrow(filtered_abundance),
+    "features retained (removed", length(low_prevalence_features), "present in <",
+    min_nonzero_samples, "samples).\n"
+  )
+
+  # ---- Diagnose and remove degenerate (non-finite / zero-variance)
+  #      samples. pathway_daa()'s LinDA backend does not tolerate
+  #      zero-variance samples — left uncaught this crashes deep inside MicrobiomeStat::linda()
+  #      with an opaque "NA features are filtered!" /
+  #      "missing value where TRUE/FALSE needed" error. Removing such
+  #      samples once, here, before any DAA method sees this level's
+  #      abundance matrix, keeps every method (not just LinDA) on a
+  #      well-defined input. ------------------------------------------------
+  non_finite_mask <- !is.finite(as.matrix(filtered_abundance))
+  if (any(non_finite_mask)) {
+    stop(
+      level_name, " abundance matrix contains ", sum(non_finite_mask),
+      " non-finite value(s) (NA/NaN/Inf) after prevalence filtering. ",
+      "Affected feature(s): ", paste(rownames(filtered_abundance)[apply(non_finite_mask, 1, any)], collapse = ", "), ". ",
+      "Affected sample(s): ", paste(colnames(filtered_abundance)[apply(non_finite_mask, 2, any)], collapse = ", "), ". ",
+      "Inspect the source PICRUSt2 output file(s) for these identifiers before proceeding."
+    )
+  }
+
+  sample_variances <- apply(filtered_abundance, 2, var)
+  zero_variance_samples <- names(sample_variances)[sample_variances == 0 | is.na(sample_variances)]
+
+  if (length(zero_variance_samples) > 0) {
+    cat(
+      "Removing", length(zero_variance_samples), "sample(s) with zero variance across all",
+      nrow(filtered_abundance), level_name, "features (would otherwise crash pathway_daa()'s LinDA backend):\n",
+      paste(" -", zero_variance_samples, collapse = "\n"), "\n"
+    )
+    filtered_abundance <- filtered_abundance[, !(colnames(filtered_abundance) %in% zero_variance_samples), drop = FALSE]
+  } else {
+    cat("No zero-variance samples detected among the", ncol(filtered_abundance), level_name, "samples.\n")
+  }
+
+  level_metadata <- full_metadata[full_metadata$SampleID %in% colnames(filtered_abundance), , drop = FALSE]
+  level_metadata <- level_metadata[match(colnames(filtered_abundance), level_metadata$SampleID), , drop = FALSE]
+
+  # ---- Differential abundance analysis, across every requested method ---
+  cat("  Running", length(daa_methods), "DAA method(s):\n")
+  daa_run <- run_daa_across_methods(
+    abundance       = filtered_abundance,
+    metadata        = as.data.frame(level_metadata),
+    group           = group_column,
+    methods         = daa_methods,
+    p_adjust_method = p_adjust_method,
+    reference       = reference_group,
+    min_nonzero_samples = min_nonzero_samples,
+    strict_pairwise_prevalence_filter = strict_pairwise_prevalence_filter
+  )
+
+  if (is.null(daa_run$results)) {
+    stop(
+      "Every requested (DAA method, comparison Condition) combination failed for the ", level_name, " level. Errors:\n",
+      paste0("  - ", daa_run$failures$DAA_Method, " vs. ", daa_run$failures$Condition, ": ",
+             daa_run$failures$Error_Message, collapse = "\n")
+    )
+  }
+  if (nrow(daa_run$failures) > 0) {
+    cat(
+      "  NOTE:", nrow(daa_run$failures),
+      "(DAA method, comparison Condition) combination(s) failed for the", level_name,
+      "level; the method error text is printed above:",
+      paste0(daa_run$failures$DAA_Method, " vs. ", daa_run$failures$Condition, collapse = ", "), "\n"
+    )
+  }
+
+  # ---- Annotate every tested feature once (the full retained feature set
+  #      from filtered_abundance, not just features a DAA method happened
+  #      to return a row for) via build_annotation_lookup() above. --------
+  annotation_lookup <- build_annotation_lookup(
+    feature_ids          = rownames(filtered_abundance),
+    functional_level     = level_name,
+    daa_results_combined = daa_run$results,
+    host_associated_pathway_ids = host_associated_pathway_ids
+  )
+
+  # pathway_daa()'s own convention (consistent across every backend) is
+  # group1 = the reference/baseline level (as resolved from `reference`),
+  # group2 = the non-reference/comparison level -- i.e. the OPPOSITE of
+  # what the names "group1"/"group2" might suggest. Mapping Condition <-
+  # group1 here (as an earlier version of this notebook did) makes every
+  # row's "Condition" column hold the constant reference_group value, which
+  # then fails to match any key in log2fc_long (built only from
+  # non-reference conditions) during the full_join below -- silently producing
+  # all-NA log2FoldChange for every row. Condition <- group2 / Reference <- group1 is
+  # the correct mapping.
+  daa_results_annotated <- daa_run$results %>%
+    rename(Feature_ID = feature, Condition = group2, Reference = group1, DAA_Method = method) %>%
+    mutate(
+      p_values = as.numeric(p_values),
+      p_adjust = as.numeric(p_adjust)
+    ) %>%
+    left_join(annotation_lookup %>% rename(Feature_ID = feature), by = "Feature_ID")
+
+  # ---- Condition-wise summary statistics -------------------------------------
+  group_levels <- sort(unique(level_metadata[[group_column]]))
+  samples_by_group <- lapply(
+    setNames(group_levels, group_levels),
+    function(g) level_metadata$SampleID[level_metadata[[group_column]] == g]
+  )
+  non_reference_groups <- setdiff(group_levels, reference_group)
+
+  # Condition-specific prevalence diagnostics are reported regardless of
+  # whether the optional strict pairwise filter is enabled. Counts use the
+  # exact filtered feature matrix and metadata-defined sample membership.
+  group_nonzero_sample_counts <- as.data.frame(
+    sapply(
+      samples_by_group,
+      function(sample_ids) rowSums(
+        filtered_abundance[, sample_ids, drop = FALSE] != 0
+      )
+    ),
+    check.names = FALSE
+  )
+  rownames(group_nonzero_sample_counts) <- rownames(filtered_abundance)
+  group_sample_sizes <- vapply(samples_by_group, length, integer(1))
+  group_prevalence_percent <- as.data.frame(
+    sweep(
+      as.matrix(group_nonzero_sample_counts),
+      MARGIN = 2,
+      STATS = group_sample_sizes,
+      FUN = "/"
+    ) * 100,
+    check.names = FALSE
+  )
+  rownames(group_prevalence_percent) <- rownames(filtered_abundance)
+
+  pairwise_prevalence_diagnostics <- bind_rows(lapply(
+    non_reference_groups,
+    function(comparison_group) {
+      reference_nonzero <- group_nonzero_sample_counts[[reference_group]]
+      comparison_nonzero <- group_nonzero_sample_counts[[comparison_group]]
+      tibble(
+        Feature_ID = rownames(filtered_abundance),
+        Condition = comparison_group,
+        Reference = reference_group,
+        Reference_Nonzero_Samples = reference_nonzero,
+        Reference_Prevalence_Percent =
+          group_prevalence_percent[[reference_group]],
+        Comparison_Nonzero_Samples = comparison_nonzero,
+        Comparison_Prevalence_Percent =
+          group_prevalence_percent[[comparison_group]],
+        Structural_Zero = reference_nonzero == 0 | comparison_nonzero == 0,
+        Below_Pairwise_Prevalence_Threshold =
+          reference_nonzero < min_nonzero_samples |
+          comparison_nonzero < min_nonzero_samples
+      )
+    }
+  ))
+  for (comparison_group in non_reference_groups) {
+    comparison_diagnostics <- pairwise_prevalence_diagnostics %>%
+      filter(Condition == comparison_group)
+    cat(
+      "  Pairwise prevalence diagnostics for ", reference_group, " vs. ",
+      comparison_group, ": ",
+      sum(comparison_diagnostics$Structural_Zero),
+      " structural-zero feature(s); ",
+      sum(comparison_diagnostics$Below_Pairwise_Prevalence_Threshold),
+      " below the per-condition threshold of ", min_nonzero_samples, ".\n",
+      sep = ""
+    )
+  }
+
+  group_mean_abundance <- as.data.frame(
+    # Arithmetic condition means are descriptive summaries of predicted
+    # abundance; they are not the model coefficients returned by either DAA
+    # backend.
+    sapply(samples_by_group, function(sample_ids) rowMeans(filtered_abundance[, sample_ids, drop = FALSE], na.rm = TRUE)),
+    check.names = FALSE
+  )
+  group_sd_abundance <- as.data.frame(
+    # Use sample SD (`stats::sd`, denominator n - 1) within each condition.
+    sapply(samples_by_group, function(sample_ids) apply(filtered_abundance[, sample_ids, drop = FALSE], 1, sd, na.rm = TRUE)),
+    check.names = FALSE
+  )
+  group_relative_abundance <- as.data.frame(
+    # Normalize the vector of condition means across retained pathways. These
+    # proportions are for descriptive reporting and are not fed back into LinDA.
+    lapply(group_mean_abundance, function(x) x / sum(x, na.rm = TRUE)),
+    check.names = FALSE
+  )
+  rownames(group_relative_abundance) <- rownames(group_mean_abundance)
+
+  # ---- Log2 fold-change vs. reference condition --------------------------
+  # Use half the smallest positive condition mean as a level-specific
+  # pseudocount. This preserves the direction of features absent from one
+  # condition while avoiding infinite fold changes; replacing infinity with
+  # zero would incorrectly report "no change" for those boundary features.
+  positive_group_means <- unlist(group_mean_abundance, use.names = FALSE)
+  positive_group_means <- positive_group_means[is.finite(positive_group_means) & positive_group_means > 0]
+  if (length(positive_group_means) == 0) {
+    stop("No positive condition mean abundances remain for ", level_name, "; cannot calculate log2 fold-change.")
+  }
+  log2fc_pseudocount <- min(positive_group_means) / 2
+  cat("  Log2 fold-change pseudocount:", format(log2fc_pseudocount, scientific = TRUE), "\n")
+
+  log2fc_columns <- lapply(non_reference_groups, function(g) {
+    log2(
+      (group_mean_abundance[[g]] + log2fc_pseudocount) /
+        (group_mean_abundance[[reference_group]] + log2fc_pseudocount)
+    )
+  })
+  names(log2fc_columns) <- non_reference_groups
+  log2fc_wide <- as.data.frame(log2fc_columns, check.names = FALSE)
+  rownames(log2fc_wide) <- rownames(group_mean_abundance)
+  log2fc_long <- log2fc_wide %>%
+    rownames_to_column("Feature_ID") %>%
+    pivot_longer(cols = -Feature_ID, names_to = "Condition", values_to = "log2FoldChange")
+
+  # ---- Combine DAA (all methods) + log2FoldChange ------------------------
+  daa_all_methods <- daa_results_annotated %>%
+    full_join(log2fc_long, by = c("Feature_ID", "Condition")) %>%
+    mutate(
+      significance = case_when(
+        is.na(p_adjust)   ~ NA_character_,
+        p_adjust < 0.0001 ~ "****",
+        p_adjust < 0.001  ~ "***",
+        p_adjust < 0.01   ~ "**",
+        p_adjust < 0.05   ~ "*",
+        TRUE              ~ ""
+      )
+    ) %>%
+    # Column order: log2FoldChange and significance -- the two figures most
+    # people look at first (effect size and whether it is significant) --
+    # are placed directly after DAA_Submethod, ahead of the raw p-values,
+    # adj_method, and pathway annotation columns that follow via
+    # everything(). Applied uniformly to every functional level (not just
+    # KEGG) since the underlying column set and this ordering logic are
+    # level-agnostic.
+    select(
+      Feature_ID, Condition, Reference, DAA_Method, DAA_Submethod,
+      log2FoldChange, significance,
+      everything()
+    )
+
+  # ---- Per-feature-per-comparison agreement across the selected methods --
+  annotation_columns <- setdiff(
+    colnames(daa_all_methods),
+    c("Feature_ID", "Condition", "Reference", "DAA_Method", "DAA_Submethod",
+      "p_values", "p_adjust", "adj_method", "log2FoldChange", "significance")
+  )
+  agreement_annotation_lookup <- daa_all_methods %>%
+    distinct(Feature_ID, .keep_all = TRUE) %>%
+    select(all_of(c("Feature_ID", annotation_columns)))
+
+  agreement_summary <- daa_all_methods %>%
+    # Summarize method completion and threshold crossings without combining
+    # p-values. The resulting label is descriptive convergence evidence only.
+    filter(!is.na(DAA_Method)) %>%
+    group_by(Feature_ID, Condition, Reference) %>%
+    summarise(
+      Methods_Completed        = n_distinct(DAA_Method[!is.na(p_adjust)]),
+      Significant_Method_Count = sum(p_adjust < significance_threshold, na.rm = TRUE),
+      Methods_Significant      = paste(sort(unique(DAA_Method[!is.na(p_adjust) & p_adjust < significance_threshold])), collapse = "; "),
+      log2FoldChange           = dplyr::first(log2FoldChange),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      Method_Agreement = case_when(
+        Methods_Completed < length(daa_methods) ~ "Incomplete: one method failed",
+        Significant_Method_Count == length(daa_methods) ~ "Both methods significant",
+        Significant_Method_Count == 0 ~ "Neither method significant",
+        TRUE ~ paste0(Methods_Significant, " only")
+      )
+    ) %>%
+    left_join(
+      pairwise_prevalence_diagnostics,
+      by = c("Feature_ID", "Condition", "Reference")
+    ) %>%
+    left_join(agreement_annotation_lookup, by = "Feature_ID")
+
+  cat(
+    "  Method agreement:", nrow(agreement_summary), "feature x condition comparisons; ",
+    sum(agreement_summary$Method_Agreement == "Both methods significant"),
+    "significant with both methods.\n"
+  )
+
+  list(
+    # Return every analysis and diagnostic object required for workbook export.
+    # Keeping these in one named object prevents the export phase from silently
+    # recomputing statistics with different settings.
+    level_name               = level_name,
+    filtered_abundance       = filtered_abundance,
+    level_metadata           = level_metadata,
+    daa_run_failures         = daa_run$failures,
+    daa_all_methods          = daa_all_methods,
+    agreement_summary        = agreement_summary,
+    group_mean_abundance     = group_mean_abundance,
+    group_sd_abundance       = group_sd_abundance,
+    group_relative_abundance = group_relative_abundance,
+    group_nonzero_sample_counts = group_nonzero_sample_counts,
+    group_prevalence_percent = group_prevalence_percent,
+    pairwise_prevalence_diagnostics = pairwise_prevalence_diagnostics,
+    log2fc_wide              = log2fc_wide,
+    group_levels             = group_levels,
+    annotation_lookup        = annotation_lookup
+  )
+}
+```
+
+------------------------------------------------------------------------
+
+# Run the Analysis for Each Functional Level {#run-analysis}
+
+This chunk calls `process_functional_level()` once per entry in `functional_levels_to_analyze` (MetaCyc and/or KEGG), storing each level's full set of results in `level_results` for the Export section that follows.
+
+```{r run-analysis-per-level}
+# Preserve functional-level names on the result list so downstream export never
+# infers whether a matrix is MetaCyc or KEGG from its position.
+level_results <- lapply(
+  setNames(functional_levels_to_analyze, functional_levels_to_analyze),
+  function(level_name) {
+    process_functional_level(
+      # Pass every statistical choice explicitly. This makes the per-level calls
+      # auditable and prevents hidden defaults inside the orchestration function.
+      level_name              = level_name,
+      abundance_raw           = functional_abundance_by_level[[level_name]],
+      full_metadata           = sample_metadata,
+      group_column            = group_column,
+      reference_group         = reference_group,
+      daa_methods             = daa_methods_to_run,
+      p_adjust_method         = p_adjust_method,
+      significance_threshold  = significance_threshold,
+      min_nonzero_samples     = min_nonzero_samples,
+      strict_pairwise_prevalence_filter = strict_pairwise_prevalence_filter,
+      host_associated_pathway_ids = kegg_host_associated_pathway_ids
+    )
+  }
+)
+```
+
+------------------------------------------------------------------------
+
+# Document and Export Results {#export-results}
+
+This chunk writes each functional level's results to its own Excel workbook: one combined condition-wise `Abundance_Summary` sheet, one sheet per selected DAA method, and a `Method_Agreement` sheet that reports both methods side by side.
+
+```{r export-to-excel}
+# One self-contained workbook per functional level (every results table
+# for THAT level only) rather than one combined
+# workbook with level-prefixed sheet names, so MetaCyc and KEGG results can
+# be opened, filtered, and shared independently. Sheet names below are
+# therefore unprefixed within each level's own file. Sample metadata itself
+# is not re-exported here -- it lives in data/metadata.tsv (see
+# data/README.md), which is this workbook's own input, not a result of it.
+method_agreement_by_level    <- list()
+daa_methods_present_by_level <- list()
+abundance_summary_by_level   <- list()
+daa_export_by_level          <- list()
+
+for (level_name in names(level_results)) {
+  this_level <- level_results[[level_name]]
+  this_excel_path <- output_excel_path_by_level[[level_name]]
+
+  # Rebuild each functional-level workbook from scratch on a full run so
+  # obsolete sheets from a previous configuration cannot remain.
+  if (file.exists(this_excel_path)) {
+    unlink(this_excel_path)
+  }
+
+  # Sheet: one row per retained pathway, combining all condition-wise mean,
+  # SD, relative-abundance, non-zero sample count, prevalence percentage,
+  # structural-zero/boundary flags, and comparison-vs-reference log2 fold-
+  # change values. Metric names are embedded in the column headers so values
+  # from different summaries cannot be confused when filtering or copying.
+  non_reference_groups <- setdiff(this_level$group_levels, reference_group)
+  abundance_summary <- tibble(Feature_ID = rownames(this_level$group_mean_abundance))
+  for (group_name in this_level$group_levels) {
+    abundance_summary[[paste0(group_name, "_Mean_Abundance")]] <-
+      this_level$group_mean_abundance[[group_name]]
+    abundance_summary[[paste0(group_name, "_SD_Abundance")]] <-
+      this_level$group_sd_abundance[[group_name]]
+    abundance_summary[[paste0(group_name, "_Relative_Abundance")]] <-
+      this_level$group_relative_abundance[[group_name]]
+    abundance_summary[[paste0(group_name, "_Nonzero_Samples")]] <-
+      this_level$group_nonzero_sample_counts[[group_name]]
+    abundance_summary[[paste0(group_name, "_Prevalence_Percent")]] <-
+      this_level$group_prevalence_percent[[group_name]]
+  }
+  abundance_summary$Has_Structural_Zero_Condition <- apply(
+    this_level$group_nonzero_sample_counts == 0,
+    1,
+    any
+  )
+  abundance_summary$Has_Below_Prevalence_Threshold_Condition <- apply(
+    this_level$group_nonzero_sample_counts < min_nonzero_samples,
+    1,
+    any
+  )
+  for (group_name in non_reference_groups) {
+    abundance_summary[[paste0(group_name, "_vs_", reference_group, "_log2FoldChange")]] <-
+      this_level$log2fc_wide[[group_name]]
+  }
+  if (level_name == "KEGG") {
+    abundance_summary <- abundance_summary %>%
+      left_join(
+        this_level$annotation_lookup %>% rename(Feature_ID = feature),
+        by = "Feature_ID"
+      )
+  }
+  abundance_summary_by_level[[level_name]] <- abundance_summary
+  add_sheet_to_excel(this_excel_path, "Abundance_Summary", abundance_summary,
+                     rownames = FALSE, overwrite = TRUE)
+
+  # One sheet PER DAA method (rather than a single combined long table),
+  # named after the method itself, dropping the now-redundant DAA_Method
+  # column (the sheet name already says which method this is) while keeping
+  # the backend's DAA_Submethod label for transparency.
+  daa_all_methods_export <- this_level$daa_all_methods
+  daa_export_by_level[[level_name]] <- daa_all_methods_export
+  daa_methods_present <- sort(unique(daa_all_methods_export$DAA_Method[!is.na(daa_all_methods_export$DAA_Method)]))
+  daa_methods_present_by_level[[level_name]] <- daa_methods_present
+  for (method_name in daa_methods_present) {
+    method_sheet <- daa_all_methods_export %>%
+      filter(DAA_Method == method_name) %>%
+      select(-DAA_Method) %>%
+      arrange(p_adjust)
+    add_sheet_to_excel(this_excel_path, method_name, method_sheet,
+                       rownames = FALSE, overwrite = TRUE)
+  }
+
+  # Sheet: exact adjusted p-values and significance codes for LinDA and
+  # MaAsLin2, plus an explicit agreement label. This is a transparent
+  # side-by-side comparison, not a majority-vote consensus statistic.
+  method_comparison_matrix <- daa_all_methods_export %>%
+    filter(!is.na(DAA_Method)) %>%
+    select(Feature_ID, Condition, DAA_Method, p_adjust, significance) %>%
+    pivot_wider(
+      names_from  = DAA_Method,
+      values_from = c(p_adjust, significance),
+      names_glue  = "{DAA_Method}_{.value}"
+    )
+
+  method_agreement <- this_level$agreement_summary %>%
+    left_join(method_comparison_matrix, by = c("Feature_ID", "Condition")) %>%
+    arrange(
+      factor(
+        Method_Agreement,
+        levels = c("Both methods significant", "LinDA only", "Maaslin2 only",
+                   "Neither method significant", "Incomplete: one method failed")
+      ),
+      Feature_ID
+    )
+  method_agreement_by_level[[level_name]] <- method_agreement
+  add_sheet_to_excel(this_excel_path, "Method_Agreement", method_agreement,
+                     rownames = FALSE, overwrite = TRUE)
+
+  cat("Results for", level_name, "exported to:\n ", this_excel_path, "\n")
+}
+```
+
+## Document and Export Column Dictionary {#column-dictionary}
+
+This chunk documents every column written to every sheet of both workbooks in a trailing `Column_Dictionary` sheet, using the project's shared [build_column_dictionary_function.R](../functions/build_column_dictionary_function.R) helper, which fails loudly if any exported column is missing a description -- so this dictionary cannot silently drift out of sync with what the workbooks actually contain.
+
+```{r build-and-export-column-dictionary}
+# Human-readable explanation for every column written to each sheet above.
+# build_column_dictionary() fails loudly if any exported column is missing
+# from these named vectors, so this dictionary cannot silently drift out of
+# sync with what the workbook actually contains.
+
+# build_abundance_summary_column_descriptions()
+# Complete description of the combined Abundance_Summary sheet for one
+# functional level, including every Condition and comparison-specific column.
+build_abundance_summary_column_descriptions <- function(level_name, group_levels,
+                                                        reference_group,
+                                                        min_nonzero_samples) {
+  descriptions <- c(Feature_ID = paste0(level_name, " feature identifier."))
+
+  for (group_name in group_levels) {
+    descriptions[paste0(group_name, "_Mean_Abundance")] <-
+      paste0("Mean predicted pathway abundance for condition ", group_name, ".")
+    descriptions[paste0(group_name, "_SD_Abundance")] <-
+      paste0("Sample standard deviation of predicted pathway abundance for condition ", group_name, ".")
+    descriptions[paste0(group_name, "_Relative_Abundance")] <- paste0(
+      "Condition-mean relative abundance for condition ", group_name,
+      ": pathway mean divided by the sum of all retained pathway means in that condition."
+    )
+    descriptions[paste0(group_name, "_Nonzero_Samples")] <- paste0(
+      "Number of samples in condition ", group_name,
+      " with predicted pathway abundance greater than zero."
+    )
+    descriptions[paste0(group_name, "_Prevalence_Percent")] <- paste0(
+      "Percentage of samples in condition ", group_name,
+      " with predicted pathway abundance greater than zero (0-100 scale)."
+    )
+  }
+
+  descriptions["Has_Structural_Zero_Condition"] <-
+    "TRUE when at least one condition has zero non-zero samples for this feature; the displayed log2 fold-change can then be strongly pseudocount-sensitive."
+  descriptions["Has_Below_Prevalence_Threshold_Condition"] <- paste0(
+    "TRUE when at least one condition has fewer than min_nonzero_samples (",
+    min_nonzero_samples,
+    ") non-zero samples. This is a boundary/sparsity flag even when the default pooled prevalence filter retains the feature."
+  )
+
+  for (group_name in setdiff(group_levels, reference_group)) {
+    descriptions[paste0(group_name, "_vs_", reference_group, "_log2FoldChange")] <- paste0(
+      "Pseudocount-stabilized log2(", group_name, " mean abundance / ",
+      reference_group, " reference mean abundance); the pseudocount is half the smallest positive condition mean within this functional level."
+    )
+  }
+
+  if (level_name == "KEGG") {
+    descriptions["pathway_name"] <-
+      "KEGG pathway name from ggpicrust2's bundled ko_to_kegg_reference hierarchy."
+    descriptions["pathway_class"] <-
+      "Top-level KEGG hierarchy class from ggpicrust2's bundled reference, with the numeric hierarchy prefix removed."
+    descriptions["pathway_subclass"] <-
+      "Second-level KEGG hierarchy class from ggpicrust2's bundled reference, with the numeric hierarchy prefix removed."
+    descriptions["pathway_map"] <-
+      "Generic KEGG map identifier constructed from the bundled pathway number (map#####)."
+    descriptions["requires_organism_appropriateness_review"] <-
+      "TRUE when this retained KEGG map is configured or hierarchically identified as host-, eukaryote-, or virus-associated and therefore requires explicit organism-appropriateness review before biological reporting."
+    descriptions["organism_appropriateness_note"] <-
+      "Interpretation note explaining that shared microbial KOs do not prove the named host/eukaryotic/viral pathway process occurs."
+  }
+  descriptions
+}
+
+# build_level_column_descriptions()
+# Shared column vocabulary across a level's per-method sheets and the
+# Method_Agreement sheet. `method_columns` adds descriptions for the
+# method-specific adjusted-p-value and significance-code columns. Any other
+# column present but not covered by the fixed vocabulary below is a
+# pathway annotation column (KEGG: from the bundled long-format hierarchy;
+# MetaCyc: from
+# ggpicrust2::pathway_annotation()'s bundled reference table) and is
+# described generically as a fallback.
+build_level_column_descriptions <- function(level_name, columns_present, reference_group,
+                                             p_adjust_method, significance_threshold,
+                                             method_columns = character(0)) {
+  descriptions <- c(
+    Feature_ID               = paste0(level_name, " feature identifier."),
+    Condition                     = "Non-reference condition in this pairwise comparison.",
+    Reference                 = paste0("Reference/baseline condition this row is compared against (\"", reference_group, "\")."),
+    DAA_Submethod              = "Original ggpicrust2 backend label for this method; informational only.",
+    p_values                    = "Raw (unadjusted) p-value from this sheet's DAA method.",
+    p_adjust                     = paste0("Multiple-testing-adjusted p-value (", p_adjust_method, ") within this method x functional-level x reference-versus-comparison family."),
+    adj_method                    = "Multiple-testing correction method used to compute p_adjust for this row (matches p_adjust_method in Configuration).",
+    log2FoldChange                 = "Pseudocount-stabilized log2(condition mean abundance / reference-condition mean abundance); the pseudocount is half the smallest positive condition mean within this functional level.",
+    significance                   = "Conventional asterisk significance code derived from p_adjust (**** < 0.0001, *** < 0.001, ** < 0.01, * < 0.05).",
+    Methods_Completed                = "Number of the two selected DAA methods that returned a result for this Feature_ID x Condition comparison; method failures are reported in the rendered Step 4 notebook.",
+    Significant_Method_Count           = paste0("Number of the two selected methods that called this Feature_ID x Condition comparison significant at adjusted p < ", significance_threshold, "."),
+    Methods_Significant                  = "Semicolon-separated list of the specific method(s) that called this comparison significant.",
+    Method_Agreement                       = "Agreement category: both methods significant, one named method only, neither method significant, or incomplete because one method failed. This is not a combined p-value.",
+    Reference_Nonzero_Samples = "Number of reference-condition samples with predicted abundance greater than zero for this feature.",
+    Reference_Prevalence_Percent = "Percentage of reference-condition samples with predicted abundance greater than zero (0-100 scale).",
+    Comparison_Nonzero_Samples = "Number of comparison-condition samples with predicted abundance greater than zero for this feature.",
+    Comparison_Prevalence_Percent = "Percentage of comparison-condition samples with predicted abundance greater than zero (0-100 scale).",
+    Structural_Zero = "TRUE when the feature has zero non-zero samples in either the reference or comparison condition; the displayed log2 fold-change can then be strongly pseudocount-sensitive.",
+    Below_Pairwise_Prevalence_Threshold = "TRUE when either condition has fewer than min_nonzero_samples non-zero samples. With strict_pairwise_prevalence_filter = TRUE, such a feature is excluded from this pairwise model; with the default FALSE setting, it remains testable but explicitly flagged."
+  )
+  if (level_name == "KEGG") {
+    descriptions["pathway_name"] <- "KEGG pathway name from ggpicrust2's bundled ko_to_kegg_reference hierarchy."
+    descriptions["pathway_class"] <- "Top-level KEGG hierarchy class from ggpicrust2's bundled reference, with the numeric hierarchy prefix removed."
+    descriptions["pathway_subclass"] <- "Second-level KEGG hierarchy class from ggpicrust2's bundled reference, with the numeric hierarchy prefix removed."
+    descriptions["pathway_map"] <- "Generic KEGG map identifier constructed from the bundled pathway number (map#####)."
+    descriptions["requires_organism_appropriateness_review"] <- "TRUE when this retained KEGG map is configured or hierarchically identified as host-, eukaryote-, or virus-associated and therefore requires explicit organism-appropriateness review before biological reporting."
+    descriptions["organism_appropriateness_note"] <- "Interpretation note explaining that shared microbial KOs do not prove the named host/eukaryotic/viral pathway process occurs."
+  }
+
+  if (length(method_columns) > 0) {
+    method_column_descriptions <- vapply(method_columns, function(column_name) {
+      method_name <- sub("_(p_adjust|significance)$", "", column_name)
+      if (grepl("_p_adjust$", column_name)) {
+        paste0(method_name, " multiple-testing-adjusted p-value (", p_adjust_method,
+               ") for this Feature_ID x Condition comparison.")
+      } else {
+        paste0(method_name, " significance code derived from its adjusted p-value; blank/NA means not significant or unavailable (method failures are reported in the rendered Step 4 notebook).")
+      }
+    }, character(1))
+    descriptions <- c(descriptions, setNames(method_column_descriptions, method_columns))
+  }
+
+  missing_columns <- setdiff(columns_present, names(descriptions))
+  if (length(missing_columns) > 0) {
+    descriptions <- c(descriptions, setNames(
+      rep(if (level_name == "KEGG") "Pathway annotation column (see annotate_kegg_pathways())." else "Pathway annotation column added by ggpicrust2::pathway_annotation().",
+          length(missing_columns)),
+      missing_columns
+    ))
+  }
+  descriptions[columns_present]
+}
+
+# Built and exported once per level's own workbook, using the same
+# unprefixed sheet names each workbook actually contains.
+for (level_name in names(level_results)) {
+  this_level <- level_results[[level_name]]
+  this_excel_path <- output_excel_path_by_level[[level_name]]
+  abundance_summary        <- abundance_summary_by_level[[level_name]]
+  abundance_descriptions   <- build_abundance_summary_column_descriptions(
+    level_name, this_level$group_levels, reference_group,
+    min_nonzero_samples
+  )
+  method_agreement        <- method_agreement_by_level[[level_name]]
+  daa_methods_present     <- daa_methods_present_by_level[[level_name]]
+
+  # Zero-row slice of daa_all_methods (minus the now-dropped DAA_Method
+  # column) as a column-name/type template shared by every per-method
+  # sheet -- every method's sheet has the identical schema, so this is
+  # computed once rather than once per method.
+  method_sheet_template <- daa_export_by_level[[level_name]][
+    0,
+    setdiff(colnames(daa_export_by_level[[level_name]]), "DAA_Method"),
+    drop = FALSE
+  ]
+  method_dictionary_parts <- lapply(daa_methods_present, function(method_name) {
+    build_column_dictionary(method_name, method_sheet_template,
+                             build_level_column_descriptions(level_name, colnames(method_sheet_template),
+                                                              reference_group, p_adjust_method, significance_threshold),
+                             workbook_path = this_excel_path,
+                             rownames = FALSE)
+  })
+
+  dictionary_parts <- list(
+    build_column_dictionary("Abundance_Summary", abundance_summary, abundance_descriptions,
+                             workbook_path = this_excel_path, rownames = FALSE),
+    bind_rows(method_dictionary_parts),
+    build_column_dictionary("Method_Agreement", method_agreement,
+                             build_level_column_descriptions(level_name, colnames(method_agreement),
+                                                              reference_group, p_adjust_method, significance_threshold,
+                                                              method_columns = grep("_(p_adjust|significance)$", colnames(method_agreement), value = TRUE)),
+                             workbook_path = this_excel_path, rownames = FALSE)
+  )
+
+  column_dictionary <- bind_rows(dictionary_parts)
+
+  add_sheet_to_excel(this_excel_path, "Column_Dictionary", column_dictionary,
+                     rownames = FALSE, overwrite = TRUE)
+
+  cat("Column_Dictionary sheet added. ", level_name, " workbook complete at:\n ", this_excel_path, "\n", sep = "")
+
+  print(render_output_links(this_excel_path, labels = paste(level_name, "DAA results workbook (Excel)")))
+}
+```
+
+------------------------------------------------------------------------
+
+# Output File Summary
+
+The tree below lists every file this notebook has written to its own output folder, [results/4_functional_differential_abundance_analysis/](../../results/4_functional_differential_abundance_analysis/), as a clickable, portable link (relative to this notebook's own location) with a short description -- built live from what is actually on disk at knit time via the project's shared [render_output_tree_function.R](../functions/render_output_tree_function.R) helper, so it always matches this run's real output rather than a hand-maintained list.
+
+```{r output-summary, echo=FALSE}
+# Discover the two current workbooks from the managed output directory at
+# render time rather than presenting a potentially stale hard-coded file list.
+render_output_tree(
+  output_folder,
+  descriptions = c(
+    "functional_daa_summary_MetaCyc.xlsx" = "MetaCyc differential abundance analysis results workbook (Excel)",
+    "functional_daa_summary_KEGG.xlsx" = "KEGG differential abundance analysis results workbook (Excel)"
+  )
+)
+```
+
+------------------------------------------------------------------------
+
+# Output Interpretation {#output-interpretation}
+
+[functional_daa_summary_MetaCyc.xlsx](../../results/4_functional_differential_abundance_analysis/functional_daa_summary_MetaCyc.xlsx) and [functional_daa_summary_KEGG.xlsx](../../results/4_functional_differential_abundance_analysis/functional_daa_summary_KEGG.xlsx) are two independent, self-contained workbooks with the same sheet structure (`Abundance_Summary`, `LinDA`, `Maaslin2`, `Method_Agreement`, `Column_Dictionary`) — which workbook you opened tells you the functional level, so sheet names do not repeat it. Sample metadata itself is not included as a sheet; consult `data/metadata.tsv` directly.
+
+-   **`LinDA` and `Maaslin2` sheets**: one row per tested feature x non-reference-condition comparison, containing each method's full results. Interpret adjusted p-values together with the method-independent `log2FoldChange` and remember that the outcome is predicted functional potential. Benjamini-Hochberg adjustment controls FDR within this method x functional-level x comparison family, not across the entire study.
+-   **`Abundance_Summary` sheet**: one row per feature retained by the pooled prevalence filter. Every condition has clearly labeled mean-abundance, SD-abundance, relative-abundance, non-zero-sample-count, and prevalence-percentage columns. `Has_Structural_Zero_Condition` and `Has_Below_Prevalence_Threshold_Condition` make sparse boundary cases visible without deleting possible presence/absence contrasts. Every non-reference condition also has a `<comparison>_vs_<reference>_log2FoldChange` column containing `log2((comparison mean + pseudocount)/(reference mean + pseudocount))`; when a structural-zero flag is TRUE, its magnitude is especially pseudocount-sensitive. The KEGG workbook additionally includes pathway hierarchy plus `requires_organism_appropriateness_review` and a plain-language interpretation note.
+-   **`Method_Agreement` sheet**: one row per tested feature x comparison with the exact LinDA and MaAsLin2 adjusted p-values, their significance codes, pairwise non-zero/prevalence diagnostics, structural-zero and below-threshold flags, and `Method_Agreement`. “Both methods significant” is the strongest convergence category; “LinDA only” or “Maaslin2 only” is method-dependent. The agreement label is not a combined p-value. If `strict_pairwise_prevalence_filter = TRUE`, below-threshold features are absent because neither method receives them; with the default `FALSE`, they remain visible and flagged.
+-   **Small-cohort interpretation**: review the condition sample counts printed in [Load Metadata](#load-metadata). When groups are small relative to the hundreds of pathways tested, treat adjusted-p discoveries as hypothesis-generating and seek independent validation rather than presenting them as definitive.
+
+------------------------------------------------------------------------
+
+# Recommended Next Step
+
+Continue with [Step 5 — Taxon Contribution Analysis](5_taxon_contribution.md) to determine which ASVs and annotated taxa contribute to selected MetaCyc and KEGG pathways. Step 5 generates its own contribution tables from Step 1 and Step 2 outputs; pathway IDs from this notebook's MetaCyc and KEGG `Method_Agreement` sheets can be copied into its configuration for targeted contribution analysis.
+
+------------------------------------------------------------------------
+
+# Session Information
+
+This final chunk records the R version, platform, and attached package versions needed to reproduce the analysis environment.
+
+```{r session-info, echo=FALSE}
+# Capture R, platform, and attached-package versions in the executable report.
+sessionInfo()
+```
+
+------------------------------------------------------------------------
+
+# References
+
+## Methods
+
+-   Yang C, Mai J, Cao X, Burberry A, Cominelli F, Zhang L (2023). ggpicrust2: an R package for PICRUSt2 predicted functional profile analysis and visualization. *Bioinformatics* 39(8), btad470. <https://doi.org/10.1093/bioinformatics/btad470>
+-   Douglas GM, Maffei VJ, Zaneveld JR, et al. (2020). PICRUSt2 for prediction of metagenome functions. *Nat Biotechnol* 38, 685-688. <https://doi.org/10.1038/s41587-020-0548-6> (produces this notebook's input; MetaCyc/KEGG pathway prediction.)
+-   Caspi R, Billington R, Keseler IM, et al. (2020). The MetaCyc database of metabolic pathways and enzymes -- a 2019 update. *Nucleic Acids Res* 48(D1), D445-D453. <https://doi.org/10.1093/nar/gkz862>
+-   Kanehisa M, Goto S (2000). KEGG: Kyoto Encyclopedia of Genes and Genomes. *Nucleic Acids Res* 28(1), 27-30. <https://doi.org/10.1093/nar/28.1.27> (pathway hierarchy represented in `ggpicrust2`'s bundled reference; see [Annotate Every Tested Feature Once].)
+-   Zhou H, He K, Chen J, Zhang X (2022). LinDA: linear models for differential abundance analysis of microbiome compositional data. *Genome Biol* 23, 95. <https://doi.org/10.1186/s13059-022-02655-5> (**LinDA**; implemented via the [MicrobiomeStat](https://github.com/cafferychen777/MicrobiomeStat) package.)
+-   Mallick H, Rahnavard A, McIver LJ, et al. (2021). Multivariable association discovery in population-scale meta-omics studies. *PLoS Comput Biol* 17(11), e1009442. <https://doi.org/10.1371/journal.pcbi.1009442> (**Maaslin2**; [Bioconductor](https://bioconductor.org/packages/release/bioc/html/Maaslin2.html).)
+
+## Related
+
+-   [Step 2 — PICRUSt2 Pipeline](2_picrust2_pipeline.md) — this notebook's required input.
+-   [Step 5 — Taxon Contribution Analysis](5_taxon_contribution.md) — analyzes the taxon contributions underlying selected MetaCyc and KEGG pathway predictions.
+
+------------------------------------------------------------------------
+
+# Appendix: Troubleshooting Guide
+
+## Common Issues and Solutions
+
+### `Could not find the expected input file`
+
+**Cause**: [Step 2](2_picrust2_pipeline.md) has not been run yet, or its output is still gzip-compressed (`decompress_output_files <- FALSE` was used).
+
+**Action**: Run [Step 2](2_picrust2_pipeline.md) with `decompress_output_files <- TRUE`, or manually decompress `pred_metagenome_unstrat.tsv.gz` / `path_abun_unstrat.tsv.gz`.
+
+### Sample ID mismatch error
+
+**Cause**: [data/metadata.tsv](../../data/metadata.tsv)'s `SampleID` column does not exactly match the sample columns in the PICRUSt2 output (case, whitespace, or a sample present in one but not the other).
+
+**Action**: Compare the mismatched IDs printed in the error message directly against [data/metadata.tsv](../../data/metadata.tsv) and the header row of [pred_metagenome_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv); fix the metadata file (this is the far more common source of the mismatch than the PICRUSt2 output itself).
+
+### `Reference` column missing, inconsistent, or not exactly one `TRUE` condition
+
+**Cause**: This notebook derives its DAA reference/control group from a `Reference` column in [data/metadata.tsv](../../data/metadata.tsv) (`TRUE` for every row in the reference `Condition`, `FALSE` for every other row) rather than a hardcoded Configuration parameter — see [Load Metadata] and [data/README.md](../../data/README.md). This error group covers three distinct problems, each with its own message: the `Reference` column is missing entirely, a `Condition`'s rows disagree on `Reference` (some `TRUE`, some `FALSE`), or zero / more than one `Condition` is marked `Reference = TRUE`.
+
+**Action**: Add or fix the `Reference` column in [data/metadata.tsv](../../data/metadata.tsv) so that it contains only `TRUE`/`FALSE`, every row of a given `Condition` shares the same value, and exactly one `Condition` is `TRUE` (the intended reference/control condition). See the required schema in [data/README.md](../../data/README.md).
+
+### Some (DAA method, comparison Condition) combinations are missing from a level's results
+
+**Cause**: `run_daa_across_methods()` (see [Run the Selected DAA Methods]) restricts every `pathway_daa()` call to exactly two Conditions: the reference and one comparison Condition at a time (see [Why LinDA and MaAsLin2?]). It deliberately catches and logs, rather than propagates, an individual method/comparison failure. Common causes include:
+
+-   **Sample size or sparsity** — MaAsLin2 can fail if the pairwise subset has too few informative non-zero values for its model.
+-   **Degenerate transformed data** — LinDA can fail if zero-variance sample removal was insufficient for a particular comparison.
+
+**Action**: Read the method error printed in the rendered Step 4 notebook for the specific method/Condition/level — it is the underlying package's own error text. A failure for one (method, comparison Condition) combination does not affect any other combination, method, or functional level; the notebook continues and reports results from every combination that succeeded.
+
+### A DAA method's `log2FoldChange` column is empty, or the wrong `Condition` appears as the reference in exported sheets
+
+**Cause**: Some `ggpicrust2::pathway_daa()` backends have historically constructed output `group1`/`group2` labels from factor order rather than the explicit reference. This can break the join to the notebook's method-independent log2 fold-change.
+
+**Action**: Nothing to do — `run_daa_across_methods()` (see [Run the Selected DAA Methods] in Analysis Functions) now always overwrites `group1`/`group2` with the known `reference`/`comparison_group` values from its own loop, for every method, rather than trusting any backend's self-reported labels. If you still see an empty `log2FoldChange` column or an unexpected reference `Condition` after re-running, that specific (method, Condition) combination most likely failed outright; inspect the method error printed in the rendered Step 4 notebook rather than treating it as silent mislabeling.
+
+### A per-method sheet has a stray, mostly-empty column not documented in `Column_Dictionary`
+
+**Cause**: `ggpicrust2::pathway_daa()` can pass through extra backend-native columns in addition to the standard result columns. Combining backends with `bind_rows()` would otherwise create method-specific, mostly-empty columns.
+
+**Action**: `run_daa_across_methods()` (see [Run the Selected DAA Methods] in Analysis Functions) now restricts every method's cleaned result to a fixed canonical column set (`feature`, `group1`, `group2`, `method`, `DAA_Submethod`, `p_values`, `p_adjust`, `adj_method`) immediately after cleaning, before `bind_rows()` combines methods — so no backend-native extra column can reach any exported sheet. This notebook's own `log2FoldChange` (computed from condition mean abundances, method-independent) is added back in afterward and is the only fold-change-like column any sheet ever shows. If you still see a stray column, it is most likely a genuine pathway annotation column (documented generically in `Column_Dictionary` — see [Document and Export Column Dictionary]) rather than a backend leak.
+
+### A KEGG pathway is missing `pathway_name`/`pathway_class` after annotation
+
+**Cause**: The retained pathway ID is absent from the `ko_to_kegg_reference` bundled with the installed `ggpicrust2` release, or that reference has an unexpected schema.
+
+**Action**: Re-run [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R) to install the required current `ggpicrust2` release. Step 4 reports the number of unmatched pathway IDs and does not depend on transient network access.
+
+### `Error in pathway_annotation(): unused argument (...)`
+
+**Cause**: This notebook calls `pathway_annotation()` only for MetaCyc; KEGG annotation uses the bundled reference directly. The installed `ggpicrust2` release may not match the expected MetaCyc API.
+
+**Action**: Run `args(ggpicrust2::pathway_annotation)` in your R console to see your installed version's actual parameter list, and update `ggpicrust2` (`install.packages("ggpicrust2")` or re-run [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R)) to pick up the current CRAN release.
+
+### `pathway_daa()` fails immediately with a package-not-found error for every method
+
+**Cause**: The MaAsLin2 or MicrobiomeStat backend was not installed.
+
+**Action**: Re-run [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R), which installs both selected backends.

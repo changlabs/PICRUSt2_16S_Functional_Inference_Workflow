@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Executable R Markdown notebooks for PICRUSt2-based functional inference from 16S rRNA amplicon sequencing data.">
+  <meta name="theme-color" content="#315f72">
+  <title>PICRUSt2 16S Functional Inference Workflow</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #10293b;
+      --navy-soft: #193e52;
+      --teal: #087f86;
+      --teal-dark: #05656b;
+      --teal-pale: #e5f4f3;
+      --amber: #d6aa16;
+      --amber-pale: #fff3df;
+      --green: #16835d;
+      --green-pale: #e3f5ec;
+      --required: #c65353;
+      --ink: #183746;
+      --muted: #5d7783;
+      --line: #c9e1e7;
+      --surface: #ffffff;
+      --background: #f2f9fb;
+      --shadow: 0 12px 32px rgba(49, 95, 114, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--background);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    a { color: inherit; }
+    a:focus-visible { outline: 3px solid #f1b85b; outline-offset: 3px; }
+
+    .site-header {
+      color: #fff;
+      background: #315f72;
+    }
+    .hero {
+      width: calc(100% - 48px);
+      margin-inline: auto;
+      padding: 18px 0 21px;
+    }
+    main {
+      width: min(1180px, calc(100% - 48px));
+      margin-inline: auto;
+      padding: 16px 0 24px;
+    }
+    h1 {
+      max-width: none;
+      margin: 0;
+      font-size: clamp(1.85rem, 3.25vw, 2.85rem);
+      line-height: 1.04;
+      letter-spacing: -0.045em;
+    }
+    .section-head {
+      display: flex;
+      justify-content: flex-start;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 8px;
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .legend span::before {
+      width: 7px;
+      height: 7px;
+      background: var(--required);
+      border-radius: 50%;
+      content: "";
+    }
+    .legend .recommended::before { background: var(--amber); }
+    .legend .optional::before { background: var(--green); }
+
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .card {
+      position: relative;
+      display: flex;
+      min-height: 152px;
+      flex-direction: column;
+      padding: 14px 15px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--required);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(16, 41, 59, 0.045);
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: #9fc9d3;
+      box-shadow: var(--shadow);
+    }
+    .card.optional { border-top-color: var(--green); }
+    .card.recommended { border-top-color: var(--amber); }
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .step {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 850;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .card h2 {
+      margin: 10px 0 4px;
+      font-size: 1.02rem;
+      line-height: 1.25;
+    }
+    .card p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.42;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-top: auto;
+    }
+    .report-link,
+    .source-link {
+      padding: 4px 8px;
+      border-radius: 7px;
+      font-size: 0.72rem;
+      font-weight: 780;
+      text-decoration: none;
+    }
+    .report-link {
+      color: #fff;
+      background: #5798ad;
+    }
+    .report-link:hover { background: #417f94; }
+    .source-link {
+      color: #285a6d;
+      background: #dceff3;
+      border: 1px solid #abd3dc;
+    }
+    .source-link:hover {
+      color: #214d5e;
+      background: #c5e4ea;
+      border-color: #86bdc9;
+    }
+
+    .repo-panel {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: center;
+      margin-top: 18px;
+      padding: 15px 18px;
+      color: #214d5e;
+      background: #b0e0e6;
+      border-radius: 16px;
+    }
+    .repo-panel h2 { margin: 0 0 5px; font-size: 1.28rem; }
+    .repo-panel p { margin: 0; color: #456d7b; font-size: 0.92rem; }
+    .repo-panel a {
+      padding: 10px 15px;
+      color: #fff;
+      background: #417f94;
+      border-radius: 8px;
+      font-size: 0.86rem;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .repo-panel a:hover { background: #315f72; }
+
+    @media (max-width: 900px) {
+      .hero { padding: 22px 0 25px; }
+      .workflow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .hero, main { width: calc(100% - 28px); }
+      .hero { padding: 20px 0 23px; }
+      h1 { font-size: clamp(1.9rem, 10vw, 2.65rem); }
+      main { padding-top: 40px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .legend { justify-content: flex-start; }
+      .workflow { grid-template-columns: 1fr; }
+      .card { min-height: 0; }
+      .repo-panel { grid-template-columns: 1fr; }
+      .repo-panel a { justify-self: start; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .card { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="hero">
+      <h1>PICRUSt2 16S Functional Inference Workflow</h1>
+    </div>
+  </header>
+
+  <main id="notebooks">
+    <div class="section-head">
+      <div class="legend" aria-label="Step status legend">
+        <span>Required</span>
+        <span class="recommended">Recommended</span>
+        <span class="optional">Optional</span>
+      </div>
+    </div>
+
+    <section class="workflow" aria-label="PICRUSt2 workflow notebook reports">
+      <article class="card">
+        <div class="card-top"><span class="step">Step 1</span></div>
+        <h2>Prepare PICRUSt2 Inputs</h2>
+        <p>Validate DADA2 count and sequence tables, then create matched BIOM and FASTA inputs.</p>
+        <div class="actions">
+          <a class="report-link" href="notebooks/1_prepare_picrust2_inputs.html">Example</a>
+          <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/1_prepare_picrust2_inputs.md">GitHub</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><span class="step">Step 2</span></div>
+        <h2>Run the PICRUSt2 Pipeline</h2>
+        <p>Predict community KO, EC, MetaCyc, marker-copy-number, and NSTI profiles.</p>
+        <div class="actions">
+          <a class="report-link" href="notebooks/2_picrust2_pipeline.html">Example</a>
+          <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/2_picrust2_pipeline.md">GitHub</a>
+        </div>
+      </article>
+
+      <article class="card recommended">
+        <div class="card-top"><span class="step">Step 3</span></div>
+        <h2>Assess NSTI Quality</h2>
+        <p>Review prediction distances, excluded-read fractions, and sample-level NSTI summaries.</p>
+        <div class="actions">
+          <a class="report-link" href="notebooks/3_nsti_quality_assessment.html">Example</a>
+          <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/3_nsti_quality_assessment.md">GitHub</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><span class="step">Step 4</span></div>
+        <h2>Functional Differential Abundance</h2>
+        <p>Test MetaCyc and KEGG pathways with LinDA and MaAsLin2 and report method agreement.</p>
+        <div class="actions">
+          <a class="report-link" href="notebooks/4_functional_differential_abundance_analysis.html">Example</a>
+          <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/4_functional_differential_abundance_analysis.md">GitHub</a>
+        </div>
+      </article>
+
+      <article class="card optional">
+        <div class="card-top"><span class="step">Step 5</span></div>
+        <h2>Taxon Contributions</h2>
+        <p>Trace selected MetaCyc and KEGG predictions to contributing genera and phyla.</p>
+        <div class="actions">
+          <a class="report-link" href="notebooks/5_taxon_contribution.html">Example</a>
+          <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/5_taxon_contribution.md">GitHub</a>
+        </div>
+      </article>
+    </section>
+
+    <section class="repo-panel" aria-labelledby="repository-title">
+      <div>
+        <h2 id="repository-title">Run the workflow with your own data</h2>
+        <p>Open the repository for installation instructions, data templates, editable R Markdown notebooks, and source functions.</p>
+      </div>
+      <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow">Open GitHub repository</a>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,1290 @@
+---
+title: "Step 2: Run the PICRUSt2 Functional Prediction Pipeline"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    code_folding: show
+    df_print: paged
+  github_document:
+    toc: true
+    toc_depth: 3
+    html_preview: false
+---
+
+<!-- The hidden setup chunk below controls whether analysis code is executed. HTML reports run the workflow; GitHub Markdown remains a non-executing tutorial and code reference. -->
+
+```{r setup, include=FALSE}
+# Execute the workflow for HTML reports. The GitHub document is a code and
+# tutorial view; disabling evaluation there avoids rerunning analyses or
+# attempting to embed HTML widgets in plain Markdown.
+render_target <- knitr::opts_knit$get("rmarkdown.pandoc.to")
+knitr::opts_chunk$set(
+  eval = !(grepl("^gfm", render_target) || grepl("markdown_github", render_target, fixed = TRUE)),
+  #eval = FALSE,
+  echo = TRUE
+)
+```
+
+<!-- The hidden CSS chunk below affects only the rendered HTML report and is deliberately excluded from GitHub Markdown. -->
+
+```{css custom-styles, echo=FALSE, eval=identical(knitr::opts_knit$get("rmarkdown.pandoc.to"), "html")}
+/* Custom styling for improved readability */
+body {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+h1, h2, h3 {
+  color: #2c3e50;
+  margin-top: 1.5em;
+}
+
+/* Code and code-output font size is pinned explicitly (rather than left to
+   inherit from body) so that raising the prose size above does not also
+   enlarge code blocks, inline code, or printed console output -- those stay
+   at this project's original 14px regardless of any future prose-size
+   changes. */
+code {
+  background-color: #F2F2F2;
+  color: #2c3e50;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+pre, pre code {
+  font-size: 14px;
+}
+
+.alert-info {
+  background-color: #2c3e50;
+  color: #ffffff;
+  border-left: 4px solid #f39c12;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+.alert-warning {
+  background-color: #2c3e50;
+  color: #ffffff;
+  border-left: 4px solid #e74c3c;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+  border-left: 4px solid #28a745;
+  padding: 12px;
+  margin: 15px 0;
+}
+
+/* Table cells wrap long content (long inline code, sentences) instead of
+   overflowing or forcing horizontal scroll. */
+table {
+  width: 100%;
+}
+
+th, td {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+```
+
+# Introduction
+
+## Purpose
+
+This notebook is **Step 2** of the PICRUSt2 workflow. It runs the [PICRUSt2](https://github.com/picrust/picrust2/wiki) functional prediction pipeline on the [BIOM](http://biom-format.org/)-format feature table and FASTA representative sequences prepared in Step 1, producing community-level (per-sample) predicted gene family and pathway abundances for the study community.
+
+This step is deliberately **community-level only**. Per-ASV contribution tables are generated later in [Step 5 — Taxon Contribution Analysis](5_taxon_contribution.md), which reuses this notebook's predicted marker, KO, and EC tables without repeating sequence placement or hidden-state prediction.
+
+## What Is PICRUSt2?
+
+[PICRUSt2](https://github.com/picrust/picrust2/wiki) (**P**hylogenetic **I**nvestigation of **C**ommunities by **R**econstruction of **U**nobserved **St**ates) predicts the functional (gene family) content of a microbial community from marker-gene sequencing data alone — typically 16S rRNA amplicon sequence variants (ASVs) or OTUs — without needing shotgun metagenomic sequencing.
+
+It works by phylogenetically placing each input sequence into a reference tree built from genomes with known gene content, then using that placement to infer which genes each ASV likely carries. By default it predicts [KEGG Ortholog (KO)](https://www.genome.jp/kegg/ko.html) and [Enzyme Classification (EC)](https://www.enzyme-database.org/) abundances per sample, and infers [MetaCyc](https://metacyc.org/) pathway abundances from the EC predictions using [MinPath](https://omics.informatics.indiana.edu/MinPath/).
+
+## Pipeline Overview
+
+PICRUSt2 combines several independent tools into a single pipeline:
+
+1.  **Sequence placement** — Each ASV is phylogenetically placed into a reference tree of genomes with known gene content, using [EPA-NG](http://github.com/pierrebarbera/epa-ng) by default (or [SEPP](https://github.com/smirarab/sepp) as an alternative), with tree manipulation handled by [gappa](https://github.com/lczech/gappa).
+2.  **Hidden-state prediction (HSP)** — Gene family copy numbers (and 16S copy number, for abundance normalization) are inferred for each ASV from its position in the reference tree, using the [castor](https://cran.r-project.org/package=castor) R package.
+3.  **Metagenome prediction** — Per-ASV gene family predictions are combined with the ASV abundance table (normalized by predicted 16S copy number) to estimate the community-wide functional profile per sample.
+4.  **Pathway inference** — EC number abundances are collapsed into [MetaCyc](https://metacyc.org/) pathway abundances and coverages using [MinPath](https://omics.informatics.indiana.edu/MinPath/).
+
+The following report-only chunk embeds the workflow diagram from `R/images/`. It performs no analysis and keeps the image path project-relative so the report remains portable.
+
+```{r picrust2-flowchart, echo=FALSE, results='asis'}
+# Emit Markdown image syntax as-is so knitr embeds the existing workflow
+# diagram without copying or transforming the source image.
+picrust2_flowchart_image <-
+    cat(
+        "![**PICRUSt2 workflow overview** (source: PICRUSt2 GitHub wiki)](",
+        here::here("R", "images", "2_picrust2_flowchart.png"),
+        ")"
+    )
+```
+
+## Prerequisites
+
+Before running this notebook, ensure that:
+
+1.  Required R packages are installed — run [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R) once per R environment if you have not already done so for Step 1.
+2.  **PICRUSt2 is installed** in a dedicated [conda](https://docs.conda.io/) environment — run [install_picrust2.sh](../../setup/install_picrust2.sh) from the repository root once per machine. The default environment name is `picrust2`; set `PICRUST2_CONDA_ENV_NAME` before running both the installer and notebooks if a different name is required.
+3.  **Step 1 ([1_prepare_picrust2_inputs.Rmd](1_prepare_picrust2_inputs.Rmd))** has been completed successfully, producing [study_seqs.biom](../../results/1_prepare_picrust2_inputs/study_seqs.biom) and [study_seqs.fna](../../results/1_prepare_picrust2_inputs/study_seqs.fna) in [results/1_prepare_picrust2_inputs/](../../results/1_prepare_picrust2_inputs/).
+
+## What This Notebook Does
+
+The workflow accomplishes the following tasks:
+
+1.  **Verifies the PICRUSt2 installation**: Confirms the conda environment exists and reports the installed version.
+2.  **Runs the community-level PICRUSt2 pipeline**: Produces per-sample KO, EC, and MetaCyc pathway abundance tables and retains the predicted marker, KO, and EC tables needed by Step 5.
+3.  **Records run metadata**: Captures the exact command, exit status, and runtime in a summary Excel file.
+4.  **Decompresses output files** (optional, toggled via `decompress_output_files`): Recursively finds every `.gz`/`.zip` file produced by the run, decompresses it, and deletes the original compressed file.
+
+## Statistics and Calculations
+
+This notebook performs **prediction, not inferential statistics**. PICRUSt2
+normalizes ASV abundances by predicted marker-gene copy number, combines those
+abundances with phylogenetically inferred gene-family copy numbers, and uses
+MinPath's parsimony procedure to infer MetaCyc pathways from predicted EC
+profiles. The configured `max_nsti_threshold` excludes ASVs whose placement is
+too distant from sequenced references before community profiles are calculated.
+The workbook records run configuration, elapsed time, exit status, and verified
+output presence; none of those fields is a p-value or significance test.
+
+## Expected Input
+
+-   [results/1_prepare_picrust2_inputs/study_seqs.biom](../../results/1_prepare_picrust2_inputs/study_seqs.biom) — BIOM-format feature table from [Step 1](1_prepare_picrust2_inputs.md).
+-   [results/1_prepare_picrust2_inputs/study_seqs.fna](../../results/1_prepare_picrust2_inputs/study_seqs.fna) — FASTA representative sequences from [Step 1](1_prepare_picrust2_inputs.md).
+
+## Expected Output
+
+-   [results/2_picrust2_pipeline/picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/) — community-level PICRUSt2 output plus the per-ASV prediction tables reused by Step 5.
+-   [results/2_picrust2_pipeline/logs/](../../results/2_picrust2_pipeline/logs/) — Console log for the run.
+-   [results/2_picrust2_pipeline/picrust2_run_summary.xlsx](../../results/2_picrust2_pipeline/picrust2_run_summary.xlsx) — Execution/reuse status and, for a newly launched run, its command, exit status, and runtime; it also contains a `Decompressed_Files` sheet when files were processed and a trailing `Column_Dictionary`.
+-   Compressed output files (`.gz`) are decompressed in place and the originals deleted, unless `decompress_output_files` is set to `FALSE`.
+
+------------------------------------------------------------------------
+
+# Environment Setup
+
+::: {.alert .alert-info}
+**Before running this notebook**: install the required R packages by running [setup/install_R_dependencies.R](../../setup/install_R_dependencies.R) once per R environment, and install PICRUSt2 itself by running [install_picrust2.sh](../../setup/install_picrust2.sh) from the repository root once per machine. Neither needs to be repeated before every run of this notebook.
+:::
+
+## Load Required Packages {#load-packages}
+
+The chunk below loads every R package this notebook depends on, plus four helper functions shared across the pipeline: Excel writing, column-dictionary documentation, decompression, and clickable output links (each sourced from [R/functions/](../functions/)).
+
+```{r load-packages, message=FALSE, warning=FALSE}
+# NOTE: This chunk assumes the packages below are already installed. If any
+# library() call fails with "there is no package called ...", run
+# setup/install_R_dependencies.R once to install every package this
+# workflow needs, then re-run this notebook.
+
+# here: Project-relative file paths
+# Enables reproducible path construction regardless of working directory
+library(here)
+
+# openxlsx: Excel file creation and manipulation
+# Allows reading and writing Excel files without requiring Java dependencies
+library(openxlsx)
+
+# DT: interactive, paginated/scrollable HTML tables — used below so a run
+# with many decompressed files does not dump its entire file list into the
+# HTML report as one long static table.
+library(DT)
+
+# Source the custom Excel utility function from the project's function library
+# This function handles creating or appending sheets to Excel workbooks
+source(here("R", "functions", "add_sheet_to_excel_function.R"))
+
+# Source the custom column-dictionary utility function from the project's
+# function library. This function documents every column of a sheet being
+# exported, so a trailing "Column_Dictionary" sheet can be added to the
+# workbook (see the Document and Export Column Dictionary section below).
+source(here("R", "functions", "build_column_dictionary_function.R"))
+
+# Source the shared decompression helper functions (decompress_gz_file,
+# decompress_zip_file, decompress_all_under) from the project's function
+# library — used in the Decompress Output Files section below.
+source(here("R", "functions", "decompress_output_files_function.R"))
+
+# Source the render_output_links helper function from the project's function
+# library. This function renders one or more output file/folder paths as
+# clickable Markdown links in the rendered report, so every chunk that
+# writes an output can immediately document where its result landed.
+source(here("R", "functions", "render_output_links_function.R"))
+
+# Source the custom render_output_tree utility function from the project's
+# function library. This function prints this notebook's entire output
+# folder as a clickable directory tree (used in "Output File Summary" below),
+# scanned live from disk at knit time so it always matches what was actually
+# produced on this run.
+source(here("R", "functions", "render_output_tree_function.R"))
+```
+
+------------------------------------------------------------------------
+
+# Configuration
+
+## Adjust Run Parameters {#adjust-run-parameters}
+
+These settings control runtime and PICRUSt2's ASV-level NSTI filter. CPU use is detected automatically and can be overridden without editing the notebook by setting the `PICRUST2_NUM_THREADS` environment variable to a positive integer.
+
+```{r define-run-parameters-1}
+# ------------------------------------------------------------------
+# Number of CPU threads to use for PICRUSt2 (the -p argument)
+# ------------------------------------------------------------------
+# PICRUSt2's most time-consuming steps parallelize well. By default, use all
+# detected logical cores except one so the notebook is portable across
+# workstations and servers. PICRUST2_NUM_THREADS provides a reproducible
+# non-code override for schedulers or shared machines.
+available_cores <- parallel::detectCores(logical = TRUE)
+default_num_threads <- if (is.na(available_cores)) {
+  1L
+} else {
+  max(1L, as.integer(available_cores) - 1L)
+}
+thread_override <- Sys.getenv("PICRUST2_NUM_THREADS", unset = "")
+if (nzchar(thread_override)) {
+  parsed_thread_override <- suppressWarnings(as.integer(thread_override))
+  if (is.na(parsed_thread_override) || parsed_thread_override < 1L ||
+      !identical(as.character(parsed_thread_override), trimws(thread_override))) {
+    stop("PICRUST2_NUM_THREADS must be a positive whole number; received: ",
+         thread_override)
+  }
+  num_threads <- parsed_thread_override
+} else {
+  num_threads <- default_num_threads
+}
+
+cat(
+  "CPU Configuration:\n",
+  "- Threads requested for PICRUSt2 (num_threads):", num_threads, "\n",
+  "- Logical cores detected on this machine:", available_cores, "\n",
+  "- Thread source:", if (nzchar(thread_override)) "PICRUST2_NUM_THREADS" else "automatic detection", "\n"
+)
+```
+
+The next reporting chunk warns when the requested thread count exceeds the detected logical cores. It does not change the user's setting automatically, because cluster allocations and container limits may differ from local detection.
+
+```{r report-thread-warning, echo=FALSE}
+# Oversubscription is allowed but made visible before the expensive run starts.
+if (!is.na(available_cores) && num_threads > available_cores) {
+  warning(
+    "num_threads (", num_threads, ") exceeds the ", available_cores,
+    " cores detected on this machine. PICRUSt2 will still run, but consider ",
+    "lowering num_threads to avoid oversubscribing the CPU."
+  )
+}
+```
+
+The remaining settings control intermediate-file retention, decompression, explicit reuse, NSTI filtering, and conda discovery. They are kept in a separate chunk so the resource summary above remains easy to find in a long report.
+
+```{r define-run-parameters-2}
+# ------------------------------------------------------------------
+# Whether to keep or remove this run's intermediate files (the
+# `intermediate/` folder produced by the sequence placement and pathway
+# inference steps, including the .jplace placement files). Keeping them is
+# useful for troubleshooting; removing them saves disk space. This maps to
+# PICRUSt2's own --remove_intermediate flag.
+# ------------------------------------------------------------------
+save_intermediate_files <- TRUE  # <-- set to FALSE to pass --remove_intermediate
+
+# ------------------------------------------------------------------
+# Whether to decompress PICRUSt2's gzip-compressed output files (.gz) after
+# the run completes, replacing each compressed file with its decompressed
+# contents. This is a destructive operation (the .gz originals are deleted
+# once decompression succeeds), so it is exposed as an easy on/off switch.
+# See the "Decompress Output Files" section near the end of this notebook.
+# ------------------------------------------------------------------
+decompress_output_files <- TRUE  # <-- set to FALSE to leave .gz files compressed
+
+# ------------------------------------------------------------------
+# Optional reuse of a complete community-level output directory.
+# ------------------------------------------------------------------
+# The default is FALSE so an analysis run never silently adopts results from
+# another configuration. Set PICRUST2_REUSE_EXISTING_OUTPUTS=true only when
+# refreshing this report from an already completed, verified Step 2 run. Reuse
+# mode does not reconstruct unrecorded historical settings: fields that cannot
+# be proven from the current execution are exported as NA.
+reuse_existing_text <- tolower(trimws(Sys.getenv(
+  "PICRUST2_REUSE_EXISTING_OUTPUTS", unset = "false"
+)))
+if (!(reuse_existing_text %in% c("true", "false"))) {
+  stop(
+    "PICRUST2_REUSE_EXISTING_OUTPUTS must be either true or false; received: ",
+    reuse_existing_text
+  )
+}
+reuse_existing_outputs <- identical(reuse_existing_text, "true")
+
+# ------------------------------------------------------------------
+# Maximum per-ASV NSTI accepted by PICRUSt2. This is passed explicitly to the
+# pipeline so Step 3 can interpret filtering against a recorded value rather
+# than an implicit program default. Override with PICRUST2_MAX_NSTI when the
+# same setting is supplied to every relevant workflow step.
+# ------------------------------------------------------------------
+max_nsti_text <- Sys.getenv("PICRUST2_MAX_NSTI", unset = "2.0")
+max_nsti_threshold <- suppressWarnings(as.numeric(max_nsti_text))
+if (length(max_nsti_threshold) != 1L || is.na(max_nsti_threshold) ||
+    !is.finite(max_nsti_threshold) || max_nsti_threshold < 0) {
+  stop("PICRUST2_MAX_NSTI must be one finite non-negative number; received: ",
+       max_nsti_text)
+}
+
+# ------------------------------------------------------------------
+# Name of the conda environment created by install_picrust2.sh. The installer
+# and this notebook use the same optional environment-variable override.
+# ------------------------------------------------------------------
+conda_env_name <- Sys.getenv("PICRUST2_CONDA_ENV_NAME", unset = "picrust2")
+if (!nzchar(trimws(conda_env_name))) {
+  stop("PICRUST2_CONDA_ENV_NAME must not be empty.")
+}
+
+cat(
+  "Run-mode Configuration:\n",
+  "- Reuse an existing verified output directory:", reuse_existing_outputs, "\n",
+  "- Decompress completed output files:", decompress_output_files, "\n",
+  "- Keep intermediate files for a new run:", save_intermediate_files, "\n"
+)
+
+# ------------------------------------------------------------------
+# Path to the conda executable to use for every command in this notebook.
+# ------------------------------------------------------------------
+# Resolved dynamically below (resolve_conda_executable()) rather than
+# hard-coded, so this notebook stays portable across machines and
+# collaborators instead of only working on the machine it was written on.
+#
+# Why this needs any special handling at all: `conda init` turns "conda"
+# into a *shell function* in your interactive shell (so that `conda
+# activate` can modify that shell's environment), not a plain executable.
+# RStudio does not launch an interactive login shell, so it never sees that
+# function — a plain PATH lookup (Sys.which("conda")) can then land on a
+# *different* conda installation than the one your terminal actually uses,
+# if more than one is present on the machine (a common setup, e.g. a
+# Homebrew-installed conda alongside a separate Miniforge/Anaconda install).
+# Each conda installation keeps its own separate registry of environments,
+# so the wrong one will report a correctly-installed environment as missing.
+#
+# resolve_conda_executable() sidesteps this by asking your own default login
+# shell (the same one your terminal uses, where `conda init` did its setup)
+# for its CONDA_EXE value — the canonical variable conda's own shell hook
+# sets to the real conda binary underlying the `conda` function. This finds
+# the correct installation automatically, without hard-coding any path.
+#
+# Manual override (only needed if automatic detection still picks the wrong
+# installation): conda_executable <- "/full/path/to/your/conda"
+resolve_conda_executable <- function() {
+
+  # Fallback candidate: a plain PATH lookup, used only if the login-shell
+  # method below is unavailable (e.g. no configured login shell, such as on
+  # a CI runner) or does not yield a usable result.
+  path_lookup <- unname(Sys.which("conda"))
+
+  login_shell <- Sys.getenv("SHELL", unset = "")
+  if (!nzchar(login_shell) || !file.exists(login_shell)) {
+    return(if (nzchar(path_lookup)) path_lookup else NA_character_)
+  }
+
+  # -i : interactive shell, so it sources ~/.zshrc, ~/.bashrc, etc. — the
+  #      files where `conda init` installs its hook and sets CONDA_EXE.
+  # -c : run a single command and exit.
+  shell_output <- tryCatch(
+    system2(login_shell, args = c("-i", "-c", "echo $CONDA_EXE"),
+            stdout = TRUE, stderr = TRUE),
+    error = function(e) character()
+  )
+  shell_output <- trimws(shell_output)
+  shell_output <- shell_output[nzchar(shell_output)]
+
+  # Take the last non-empty line, in case the shell's startup files printed
+  # other banner/greeting text before the echoed value.
+  if (length(shell_output) > 0 && file.exists(shell_output[[length(shell_output)]])) {
+    return(shell_output[[length(shell_output)]])
+  }
+
+  # CONDA_EXE was not set (conda init may not have been run for this shell) —
+  # fall back to the plain PATH lookup.
+  if (nzchar(path_lookup)) path_lookup else NA_character_
+}
+
+conda_executable <- resolve_conda_executable()
+
+if (is.na(conda_executable)) {
+  stop(
+    "Could not automatically determine which conda executable to use.\n",
+    "Set it manually in this Configuration section, e.g.:\n",
+    "  conda_executable <- \"/full/path/to/your/conda\""
+  )
+}
+
+cat(
+  "Conda Configuration:\n",
+  "- Resolved conda executable:", conda_executable, "\n",
+  "- Requested conda environment:", conda_env_name, "\n",
+  "- Maximum NSTI:", max_nsti_threshold, "\n",
+  "- (If this is not the installation containing the requested environment,",
+  " override conda_executable manually above.)\n"
+)
+```
+
+## Define Path Parameters {#define-paths}
+
+Set up the input and output directory paths. Using `here()` ensures paths are relative to the project root, making the script portable across different systems.
+
+```{r define-paths}
+# Base results folder for all pipeline outputs
+results_folder <- here("results")
+
+# Folder containing Step 1's outputs (this step's inputs)
+step1_output_folder <- here(results_folder, "1_prepare_picrust2_inputs")
+
+# Output folder for this step's community-level results, numbered for pipeline
+# step tracking.
+output_folder <- here(results_folder, "2_picrust2_pipeline")
+
+# Folder for the console log from this run
+log_folder <- here(output_folder, "logs")
+
+# Create the output and log directories and any necessary parent directories
+# If a directory already exists, this operation has no effect (safe to re-run)
+dir.create(output_folder, recursive = TRUE, showWarnings = FALSE)
+dir.create(log_folder, recursive = TRUE, showWarnings = FALSE)
+
+# Path to the BIOM feature table produced by Step 1 (-i argument)
+input_biom_path <- here(step1_output_folder, "study_seqs.biom")
+
+# Path to the FASTA representative sequences produced by Step 1 (-s argument)
+input_fasta_path <- here(step1_output_folder, "study_seqs.fna")
+
+# Output directory for the PICRUSt2 run
+# NOTE: picrust2_pipeline.py will create this directory itself and refuses to
+# run if it already exists, so we only construct the path here — we do not
+# create the directory in R.
+picrust2_run_dir <- here(output_folder, "picrust2_out_pipeline")
+
+# Log file path for this run
+picrust2_log_path <- here(log_folder, "picrust2_run.log")
+
+# Path to the Excel workbook summarizing this run
+output_excel_path <- here(output_folder, "picrust2_run_summary.xlsx")
+
+# Name of the worksheet within the summary Excel file
+output_excel_sheet <- "PICRUSt2_Run_Summary"
+
+# Step 2 produces community-level outputs; Step 5 owns contribution-table
+# generation.
+run_label <- "Community-level"
+
+# Confirm the Step 1 inputs actually exist before going any further
+if (!file.exists(input_biom_path)) {
+  stop(
+    "Could not find the BIOM input file: ", input_biom_path, "\n",
+    "Run Step 1 (1_prepare_picrust2_inputs.Rmd) first."
+  )
+}
+if (!file.exists(input_fasta_path)) {
+  stop(
+    "Could not find the FASTA input file: ", input_fasta_path, "\n",
+    "Run Step 1 (1_prepare_picrust2_inputs.Rmd) first."
+  )
+}
+
+cat(
+  "Path Configuration:\n",
+  "- Input BIOM table:", input_biom_path, "\n",
+  "- Input FASTA sequences:", input_fasta_path, "\n",
+  "- Run type:", run_label, "\n",
+  "- Run output:", picrust2_run_dir, "\n",
+  "- Log folder:", log_folder, "\n"
+)
+```
+
+------------------------------------------------------------------------
+
+# Verify PICRUSt2 Installation
+
+Confirm that conda is available and that the `picrust2` environment (created by [install_picrust2.sh](../../setup/install_picrust2.sh)) exists, before attempting to run anything.
+
+```{r verify-picrust2-installation}
+# Confirm the conda executable (conda_executable, set in Configuration) can
+# actually be invoked. This works whether conda_executable is a bare command
+# name resolved via PATH ("conda") or an explicit full path override.
+conda_version_output <- tryCatch(
+  system2(conda_executable, args = "--version", stdout = TRUE, stderr = TRUE),
+  error = function(e) NULL
+)
+
+if (is.null(conda_version_output)) {
+  stop(
+    "Could not run '", conda_executable, "'. PICRUSt2 is installed via conda — ",
+    "run install_picrust2.sh from the repository root first.\n",
+    "If conda IS installed, R may simply not be finding it: compare ",
+    "Sys.which(\"conda\") in this R session to `which conda` in a terminal, and ",
+    "if they differ (or the R one is empty), set conda_executable in the ",
+    "Configuration section to the full path shown by your terminal."
+  )
+}
+
+# Confirm the target conda environment exists by asking conda directly for
+# a machine-readable environment list, rather than pattern-matching conda's
+# human-readable table (whose column layout can vary across conda versions).
+# `--json` returns an "envs" array of full environment paths; the environment
+# name is the last path component of each entry.
+conda_env_list_json <- system2(
+  conda_executable, args = c("env", "list", "--json"),
+  stdout = TRUE, stderr = TRUE
+)
+conda_env_paths <- regmatches(conda_env_list_json, regexpr('"[^"]*"', conda_env_list_json))
+conda_env_paths <- gsub('"', "", conda_env_paths)
+conda_env_paths <- conda_env_paths[nzchar(conda_env_paths)]
+conda_env_names <- basename(conda_env_paths)
+
+if (!(conda_env_name %in% conda_env_names)) {
+  stop(
+    "No conda environment named '", conda_env_name, "' was found by '", conda_executable, "'.\n",
+    "Environments visible to this conda installation: ",
+    if (length(conda_env_names) > 0) paste(conda_env_names, collapse = ", ") else "(none found)", "\n\n",
+    "If you have already run install_picrust2.sh and expected '", conda_env_name, "' to be listed here, ",
+    "R is most likely finding a different conda installation than your terminal (a common issue ",
+    "when RStudio is launched from the Dock/Finder rather than a terminal). Compare ",
+    "Sys.which(\"conda\") in R to `which conda` in a terminal — if they differ, set ",
+    "conda_executable in the Configuration section to the full path from your terminal.\n",
+    "Otherwise, run install_picrust2.sh from the repository root to create the environment."
+  )
+}
+
+# Resolve the environment's full directory (its "prefix"), not just its name.
+# This is used below in preference to `conda run -n <name>`: on some conda
+# versions/setups, `conda run -n <name>` fails to resolve a named environment
+# in exactly this kind of non-interactive subprocess context (raising
+# "EnvironmentLocationNotFound") even though `conda env list` (just above)
+# correctly finds it -- because -n relies on additional named-environment
+# lookup machinery that -p bypasses entirely by taking a literal path.
+conda_env_prefix <- conda_env_paths[basename(conda_env_paths) == conda_env_name][[1]]
+
+# PICRUSt2's hsp.py launches a nested Rscript process for its castor-based
+# NSTI calculation. When this notebook is run from RStudio, variables from the
+# parent R session can otherwise make that process load packages from the
+# system R library instead of the conda environment. This is especially
+# problematic when system R is arm64 and the conda environment is x86_64.
+# Run every conda command through the `env` executable with those variables
+# removed. Resolve that executable from PATH instead of assuming a fixed
+# operating-system location.
+env_executable <- unname(Sys.which("env"))
+if (!nzchar(env_executable)) {
+  stop("The 'env' executable was not found on PATH; it is required to isolate PICRUSt2's nested R process.")
+}
+r_env_vars_to_strip <- c(
+  "R_HOME", "R_LIBS", "R_LIBS_USER", "R_LIBS_SITE",
+  "R_ENVIRON", "R_ENVIRON_USER", "R_PROFILE", "R_PROFILE_USER"
+)
+env_unset_flags <- as.vector(rbind("-u", r_env_vars_to_strip))
+conda_command_args <- function(args) {
+  c(env_unset_flags, shQuote(conda_executable), args)
+}
+
+# Query the installed PICRUSt2 version by running it inside the conda
+# environment. `conda run -p <prefix>` executes a single command inside the
+# environment at that exact directory, without needing to activate it in the
+# current shell and without depending on named-environment resolution.
+picrust2_version <- system2(
+  env_executable,
+  args = conda_command_args(c(
+    "run", "-p", conda_env_prefix, "--no-capture-output",
+    "picrust2_pipeline.py", "--version"
+  )),
+  stdout = TRUE, stderr = TRUE
+)
+
+# system2() does NOT raise an R error just because the command it ran exited
+# non-zero -- it only sets a "status" attribute on the result and emits a
+# warning. Check that attribute explicitly so a real failure here actually
+# stops the notebook instead of silently continuing with conda's error text
+# printed where a version string was expected.
+picrust2_version_status <- attr(picrust2_version, "status")
+if (!is.null(picrust2_version_status) && picrust2_version_status != 0) {
+  stop(
+    "Failed to run picrust2_pipeline.py inside the environment at:\n  ", conda_env_prefix, "\n",
+    "Re-run install_picrust2.sh if the installation may be incomplete.\n\n",
+    "conda's own output:\n", paste(picrust2_version, collapse = "\n")
+  )
+}
+
+cat(
+  "PICRUSt2 Installation Check:\n",
+  "- conda executable:", conda_executable, "\n",
+  "- conda environment:", conda_env_name, "(", conda_env_prefix, ")\n",
+  "- picrust2_pipeline.py version:", paste(picrust2_version, collapse = " "), "\n"
+)
+```
+
+------------------------------------------------------------------------
+
+# Run PICRUSt2 Pipeline
+
+## Define Helper Function {#func-verify-run}
+
+`conda run` does not always reliably propagate a non-zero exit code from the command it wraps back to the calling process — on some conda versions, a real failure inside `picrust2_pipeline.py` can still be reported to R as exit code 0. This means the exit code alone is not sufficient evidence that a run actually succeeded, so the run below is additionally verified by checking for a specific output file that only exists after a complete, successful run.
+
+```{r func-verify-picrust2-run}
+# Verify a PICRUSt2 Pipeline Run Actually Produced Output
+#
+# Checks for a canonical output file (compressed or already decompressed) that
+# is only created once
+# picrust2_pipeline.py has completed successfully (pathway inference is on
+# by default, so a finished run always includes pathway abundance output).
+# If that file is missing — regardless of the exit code system2() reported —
+# this prints the tail of the run's log file directly into the notebook so
+# the real error is visible without needing to separately open the log.
+#
+# Arguments:
+#   output_dir         - Character scalar path to the run's -o output directory.
+#   log_path           - Character scalar path to the run's console log file.
+#   reported_exit_code - Integer (or NA) exit code reported by system2().
+#   run_label          - Character scalar label used in messages (for this
+#                        notebook, "Community-level").
+# Returns:
+#   Logical TRUE if the run's expected output file was found.
+check_picrust2_run_success <- function(output_dir, log_path, reported_exit_code, run_label) {
+
+  # Marker file that only exists after a completed default run (pathway
+  # inference is always on in this notebook, since --no_pathways is never set)
+  expected_marker_candidates <- file.path(
+    output_dir, "pathways_out",
+    c("path_abun_unstrat.tsv.gz", "path_abun_unstrat.tsv")
+  )
+  existing_marker_files <- expected_marker_candidates[
+    file.exists(expected_marker_candidates)
+  ]
+  output_looks_complete <- length(existing_marker_files) > 0L
+  expected_marker_file <- if (output_looks_complete) {
+    existing_marker_files[[1]]
+  } else {
+    paste(expected_marker_candidates, collapse = " or ")
+  }
+
+  if (isTRUE(reported_exit_code == 0) && output_looks_complete) {
+    cat(
+      "\n", run_label, "PICRUSt2 run verified — found expected output file:\n",
+      " ", expected_marker_file, "\n"
+    )
+    return(TRUE)
+  }
+
+  # Either the reported exit code was non-zero, or the expected output file is
+  # missing despite a reported exit code of 0 — treat both as failure and
+  # print the log content directly so the cause is visible here.
+  warning(
+    run_label, " PICRUSt2 run did not produce the expected output file (",
+    expected_marker_file, "). Reported exit code: ", reported_exit_code, ". ",
+    "See the log excerpt printed below for the underlying error."
+  )
+
+  if (file.exists(log_path)) {
+    log_lines  <- readLines(log_path, warn = FALSE)
+    tail_lines <- utils::tail(log_lines, 40)
+    cat(
+      "\nLast", length(tail_lines), "line(s) of", basename(log_path), ":\n",
+      paste(tail_lines, collapse = "\n"),
+      "\nEnd of log excerpt (full log at ", log_path, ")\n\n"
+    )
+  } else {
+    cat("\nNo log file found at:", log_path, "\n")
+  }
+
+  FALSE
+}
+```
+
+## Run the Pipeline {#execute-picrust2-pipeline}
+
+Runs the full PICRUSt2 pipeline end-to-end (sequence placement, hidden-state prediction, metagenome prediction, and pathway inference), producing community-level KO, EC, and MetaCyc pathway abundance tables. Step 5 generates contribution tables from this run's retained prediction files.
+
+When `PICRUST2_REUSE_EXISTING_OUTPUTS=true`, the chunk instead verifies and reuses a complete output directory. No PICRUSt2 command is launched in that mode, and the summary distinguishes current environment checks from historical run provenance.
+
+```{r run-picrust2-pipeline}
+# Build the argument vector for picrust2_pipeline.py.
+# NOTE: two unrelated "-p" flags appear below, at different positions:
+#   - the first "-p" belongs to `conda run` and takes the environment's
+#     directory (conda_env_prefix) -- conda's own flags stop being parsed
+#     once it reaches the "picrust2_pipeline.py" command name;
+#   - the second "-p" belongs to picrust2_pipeline.py itself and takes the
+#     number of CPU threads (num_threads). Everything after the command
+#     name is passed through to it unmodified.
+#   -s : FASTA file of representative ASV sequences
+#   -i : BIOM-format feature table
+#   -o : output directory (must not already exist)
+#   --verbose : print detailed progress to stdout/stderr as the run proceeds
+picrust2_run_args <- c(
+  "run", "-p", conda_env_prefix, "--no-capture-output",
+  "picrust2_pipeline.py",
+  "-s", input_fasta_path,
+  "-i", input_biom_path,
+  "-o", picrust2_run_dir,
+  "-p", as.character(num_threads),
+  "--max_nsti", as.character(max_nsti_threshold),
+  "--verbose"
+)
+
+# Append --remove_intermediate when the user has opted not to keep
+# intermediate placement/pathway-inference files (see Configuration).
+if (!save_intermediate_files) {
+  picrust2_run_args <- c(picrust2_run_args, "--remove_intermediate")
+}
+
+# Build the exact command for a new run before branching on output reuse.
+planned_picrust2_command_text <- paste(
+  shQuote(env_executable),
+  paste(conda_command_args(picrust2_run_args), collapse = " ")
+)
+
+# picrust2_pipeline.py refuses to overwrite an output directory. Reuse is an
+# explicit branch, never an implicit side effect of finding an old directory.
+run_performed_in_this_render <- !dir.exists(picrust2_run_dir)
+if (!run_performed_in_this_render && !reuse_existing_outputs) {
+  stop(
+    "Output directory already exists: ", picrust2_run_dir, "\n",
+    "PICRUSt2 will not overwrite it. Remove/rename it for a new run, or set ",
+    "PICRUST2_REUSE_EXISTING_OUTPUTS=true to verify and reuse it without ",
+    "launching PICRUSt2."
+  )
+}
+
+if (run_performed_in_this_render) {
+  picrust2_run_status <- "Executed in this notebook render"
+  picrust2_command_text <- planned_picrust2_command_text
+  cat(
+    "Running", tolower(run_label), "PICRUSt2 pipeline...\n",
+    "Command:", picrust2_command_text, "\n",
+    "This can take from several minutes to multiple hours depending on the ",
+    "number of ASVs and threads available.\n\n"
+  )
+
+  # Time and execute the run, streaming combined stdout/stderr to a log file.
+  picrust2_run_start_time <- Sys.time()
+  picrust2_run_exit_code <- system2(
+    env_executable,
+    args   = conda_command_args(picrust2_run_args),
+    stdout = picrust2_log_path,
+    stderr = picrust2_log_path
+  )
+  picrust2_run_end_time <- Sys.time()
+  picrust2_run_duration_minutes <- round(
+    as.numeric(difftime(
+      picrust2_run_end_time, picrust2_run_start_time, units = "mins"
+    )),
+    2
+  )
+  cat(
+    "\n", run_label, "PICRUSt2 run finished in",
+    picrust2_run_duration_minutes, "minutes (reported exit code:",
+    picrust2_run_exit_code, "). Verifying output...\n"
+  )
+} else {
+  picrust2_run_status <- "Reused existing verified community-level output"
+  picrust2_command_text <- paste(
+    "No PICRUSt2 command was executed in this render.",
+    "The existing output directory was verified and reused;",
+    "the current planned command is documented in the notebook code only."
+  )
+  picrust2_run_exit_code <- NA_integer_
+  picrust2_run_duration_minutes <- NA_real_
+  cat(
+    "Reusing existing Step 2 output without launching PICRUSt2:\n ",
+    picrust2_run_dir, "\n"
+  )
+}
+
+```
+
+The command has now either finished or entered explicit reuse mode. This verification chunk checks a canonical final output rather than trusting the subprocess exit code alone, then links the output directory and log in the rendered report.
+
+```{r verify-and-link-run, echo=FALSE}
+# Do not trust the reported exit code alone (see the note above the helper
+# function) — confirm the expected output file actually exists.
+picrust2_run_succeeded <- check_picrust2_run_success(
+  output_dir          = picrust2_run_dir,
+  log_path             = picrust2_log_path,
+  reported_exit_code   = if (run_performed_in_this_render) {
+    picrust2_run_exit_code
+  } else {
+    0L
+  },
+  run_label            = run_label
+)
+
+# Document where this run's output landed -- the whole picrust2_run_dir
+# folder tree (KO/EC/pathway tables etc.) and the console log.
+render_output_links(
+  c(picrust2_run_dir, picrust2_log_path),
+  labels = c("PICRUSt2 pipeline output folder", "PICRUSt2 run log")
+)
+```
+
+------------------------------------------------------------------------
+
+# Results Summary
+
+## Compute Run Summary Table {#summary-stats}
+
+This chunk assembles a one-row summary of the community-level output. For a newly executed run it records the command, settings, exit code, and timing. For explicit reuse it records `NA` for settings that cannot be proven from the current render rather than presenting current configuration values as historical facts. In both cases, `Verified Output` reports the file-based completion check.
+
+```{r compute-run-summary}
+# Assemble a table capturing the key facts about this PICRUSt2 run
+picrust2_run_summary <- data.frame(
+  `Run` = run_label,
+  `Run Status` = picrust2_run_status,
+  `Command` = picrust2_command_text,
+  `Conda Environment` = if (run_performed_in_this_render) conda_env_name else NA_character_,
+  `PICRUSt2 Version` = if (run_performed_in_this_render) paste(picrust2_version, collapse = " ") else NA_character_,
+  `CPU Threads` = if (run_performed_in_this_render) num_threads else NA_integer_,
+  `Maximum NSTI` = if (run_performed_in_this_render) max_nsti_threshold else NA_real_,
+  `Intermediate Files Kept` = if (run_performed_in_this_render) {
+    save_intermediate_files
+  } else {
+    dir.exists(file.path(picrust2_run_dir, "intermediate"))
+  },
+  `Exit Code` = picrust2_run_exit_code,
+  # NOTE: Exit Code alone is not trustworthy — conda run does not always
+  # propagate a real failure inside picrust2_pipeline.py. Verified Output
+  # reflects an actual check for the run's expected output file and is the
+  # column to trust when judging whether the run truly succeeded.
+  `Verified Output` = picrust2_run_succeeded,
+  `Duration (minutes)` = picrust2_run_duration_minutes,
+  `Output Directory` = basename(picrust2_run_dir),
+  `Log File` = basename(picrust2_log_path),
+  check.names = FALSE
+)
+
+# Display the summary in the notebook using DT::datatable(), the same
+# interactive, scrollable table used later in this notebook (DT is already
+# library()-loaded above).
+datatable(
+  picrust2_run_summary,
+  options = list(dom = 't', pageLength = 1, scrollX = TRUE,
+                 scrollY = "400px", scrollCollapse = TRUE, paging = FALSE,
+                 ordering = FALSE, searching = FALSE),
+  rownames = FALSE,
+  caption = "PICRUSt2 run summary"
+)
+```
+
+## Export Summary to Excel {#export-summary}
+
+This chunk writes the run summary table above to the output workbook using the project's shared Excel-writing helper.
+
+```{r export-summary-excel}
+# Start each full notebook run with a clean workbook so stale sheets from an
+# earlier run cannot survive. overwrite = TRUE also makes this chunk safe to
+# rerun interactively after the workbook has been created.
+if (file.exists(output_excel_path)) {
+  unlink(output_excel_path)
+}
+add_sheet_to_excel(output_excel_path, output_excel_sheet, picrust2_run_summary,
+                   rownames = FALSE, overwrite = TRUE)
+```
+
+This reporting chunk confirms that the initial summary sheet was written. The workbook remains open to additional sheets until the column dictionary is appended later.
+
+```{r report-summary-export, echo=FALSE}
+# Print the resolved path for the executable report and console log.
+cat("Summary exported to:\n", output_excel_path, "\n")
+```
+
+------------------------------------------------------------------------
+
+# Decompress Output Files {#decompress-outputs}
+
+PICRUSt2 gzip-compresses most of its large tabular outputs (for example, `pred_metagenome_unstrat.tsv.gz`) to save disk space. This step recursively finds every compressed file under the run output directory, decompresses it in place, and removes the original compressed file — so downstream steps can read plain `.tsv`/`.biom` files directly instead of needing to decompress them on the fly. Controlled by the `decompress_output_files` switch set in the [Configuration](#adjust-run-parameters) section. The decompression logic itself is defined once in [R/functions/decompress_output_files_function.R](../functions/decompress_output_files_function.R) (sourced in [Load Required Packages](#load-packages) above).
+
+::: {.alert .alert-warning}
+**This is destructive by design**: once a file is successfully decompressed, the original compressed file is deleted (not just extracted alongside it). Set `decompress_output_files <- FALSE` in Configuration if you would rather keep the compressed originals.
+:::
+
+## Run Decompression {#run-decompress}
+
+This chunk performs the actual decompression when `decompress_output_files` is `TRUE`: it walks `picrust2_run_dir` for every compressed file, decompresses each one in place, and deletes the original — using the shared [decompress_output_files_function.R](../functions/decompress_output_files_function.R) helper loaded above.
+
+```{r decompress-run}
+# Always create a consistently shaped `decompression_summary` object. This
+# lets the display, export, and dictionary chunks use the same code whether
+# decompression ran, found no archives, or was disabled.
+if (decompress_output_files) {
+
+  # A missing run directory is reported as an empty result rather than a
+  # secondary file-listing error; successful pipeline verification above
+  # normally makes this branch unreachable.
+  if (!dir.exists(picrust2_run_dir)) {
+    cat("Run output directory not found; nothing to search for compressed files.\n")
+    decompression_summary <- data.frame(
+      `Original File` = character(0), `Decompressed To` = character(0),
+      `Original Removed` = logical(0), check.names = FALSE
+    )
+  } else {
+    # The shared helper recursively discovers supported archives, validates
+    # each extraction, and records whether the compressed original was removed.
+    cat("Searching for compressed files under:\n  ", picrust2_run_dir, "\n\n")
+
+    decompression_summary <- decompress_all_under(picrust2_run_dir)
+
+    n_found     <- nrow(decompression_summary)
+    n_succeeded <- if (n_found > 0) sum(decompression_summary$`Original Removed`) else 0
+
+    cat(
+      "\nDecompression complete:", n_succeeded, "of", n_found,
+      "compressed file(s) decompressed and removed.\n"
+    )
+
+    # Partial decompression is not silently accepted: retain failed originals
+    # and show an explicit warning directing the user to the earlier messages.
+    if (n_succeeded < n_found) {
+      warning(
+        n_found - n_succeeded, " file(s) could not be decompressed and were left ",
+        "compressed — see the warnings above for details."
+      )
+    }
+  }
+
+} else {
+  # Preserve the same columns as a real run so later code does not need a
+  # special object type when decompression is intentionally disabled.
+  cat("Decompression skipped (decompress_output_files is FALSE).\n")
+  decompression_summary <- data.frame(
+    `Original File` = character(0), `Decompressed To` = character(0),
+    `Original Removed` = logical(0), check.names = FALSE
+  )
+}
+```
+
+The table below is a display-only view of the decompression audit. It remains empty when no files were processed, matching the conditional Excel export that follows.
+
+```{r display-decompression-summary, echo=FALSE}
+# Display the per-file outcome in the notebook as an interactive,
+# scrollable table rather than a single static block. A plain kable() could
+# print every row. scrollY + scrollCollapse + paging = FALSE give it a
+# fixed-height, continuously-scrollable box instead of Prev/Next page
+# controls.
+datatable(
+  decompression_summary,
+  options = list(dom = 't', pageLength = 10, scrollX = TRUE,
+                 scrollY = "400px", scrollCollapse = TRUE, paging = FALSE,
+                 ordering = FALSE, searching = FALSE),
+  rownames = FALSE
+)
+```
+
+## Export Decompression Summary to Excel {#export-decompress-summary}
+
+This chunk appends the per-file decompression outcomes above to the run's summary workbook as a `Decompressed_Files` sheet, so the Excel file documents exactly which compressed files were converted (skipped if none were found or decompression was turned off).
+
+```{r export-decompress-summary}
+# Add the audit sheet only when at least one archive was encountered. This
+# keeps the workbook structure truthful: an absent sheet means no files were
+# processed, not that undocumented rows were lost.
+if (nrow(decompression_summary) > 0) {
+  add_sheet_to_excel(output_excel_path, "Decompressed_Files", decompression_summary,
+                     rownames = FALSE, overwrite = TRUE)
+  cat("Decompression summary added to:\n", output_excel_path, "\n")
+} else {
+  cat("No compressed files were processed; nothing added to the Excel summary.\n")
+}
+```
+
+## Document and Export Column Dictionary {#column-dictionary}
+
+Every column written to this workbook is documented in a trailing `Column_Dictionary` sheet (Sheet / Column / Explanation), so the file is self-explanatory to anyone opening it outside of this notebook. `Decompressed_Files` is only documented here if that sheet was actually written above (i.e. `decompress_output_files` was `TRUE` and at least one compressed file was found).
+
+```{r build-column-dictionary}
+# Human-readable explanation for every column written to the
+# PICRUSt2_Run_Summary sheet, keyed by exact column name.
+picrust2_run_summary_column_descriptions <- c(
+  `Run` =
+    "Community-level PICRUSt2 run. Contribution-table generation is intentionally deferred to Step 5.",
+  `Run Status` =
+    "Whether PICRUSt2 was executed in this notebook render or an explicitly requested, already complete community-level output directory was verified and reused.",
+  `Command` =
+    "Exact launched command for a new run; in reuse mode, an explicit note that no command was executed and historical command settings were not reconstructed.",
+  `Conda Environment` =
+    "Configured conda environment used for a new run; NA in reuse mode because the original run environment cannot be proven from the current render.",
+  `PICRUSt2 Version` =
+    "PICRUSt2 version reported before a new run; NA in reuse mode because the original run version cannot be proven from the current render.",
+  `CPU Threads` =
+    "Number of CPU threads requested for a new run; NA in reuse mode because the original run setting is not inferred from the current configuration.",
+  `Maximum NSTI` =
+    "Maximum per-ASV NSTI passed to a new run; NA in reuse mode because the original run setting is not inferred from the current configuration.",
+  `Intermediate Files Kept` =
+    "For a new run, the configured intermediate-file policy; in reuse mode, whether an intermediate directory is actually present.",
+  `Exit Code` =
+    "Exit code reported by system2() for a newly executed conda command; NA in reuse mode because no command was launched. See Verified Output.",
+  `Verified Output` =
+    "TRUE if the expected community pathway output was found as either pathways_out/path_abun_unstrat.tsv.gz or its decompressed .tsv counterpart.",
+  `Duration (minutes)` =
+    "Wall-clock runtime of a newly executed run, rounded to 2 decimal places; NA in reuse mode.",
+  `Output Directory` =
+    "Name of the directory this run's PICRUSt2 output was written to (picrust2_out_pipeline).",
+  `Log File` =
+    "File name of the console log capturing this run's combined stdout/stderr."
+)
+
+# Human-readable explanation for every column written to the
+# Decompressed_Files sheet (only relevant if that sheet was actually written
+# above).
+decompression_summary_column_descriptions <- c(
+  `Original File` =
+    "Full path to a compressed (.gz or .zip) file found under the run output directory.",
+  `Decompressed To` =
+    "Path the compressed file was decompressed (.gz) or extracted (.zip) to.",
+  `Original Removed` =
+    "TRUE if the original compressed file was deleted after successful decompression; files that failed to decompress are left in place and this is FALSE."
+)
+
+# Build the Sheet / Column / Explanation rows for each sheet actually written
+# to this workbook. Decompressed_Files is only included if it was actually
+# exported above (nrow(decompression_summary) > 0), matching the same
+# condition used in Export Decompression Summary to Excel, so the dictionary
+# never documents a sheet that does not exist in this run's workbook.
+column_dictionary_parts <- list(
+  build_column_dictionary(
+    sheet_name    = output_excel_sheet,
+    data          = picrust2_run_summary,
+    descriptions  = picrust2_run_summary_column_descriptions,
+    workbook_path = output_excel_path,
+    rownames      = FALSE
+  )
+)
+
+if (nrow(decompression_summary) > 0) {
+  column_dictionary_parts[["Decompressed_Files"]] <- build_column_dictionary(
+    sheet_name    = "Decompressed_Files",
+    data          = decompression_summary,
+    descriptions  = decompression_summary_column_descriptions,
+    workbook_path = output_excel_path,
+    rownames      = FALSE
+  )
+}
+
+column_dictionary <- do.call(rbind, column_dictionary_parts)
+```
+
+This chunk appends the completed dictionary as the final worksheet and reports the path to the fully documented run-summary workbook.
+
+```{r export-column-dictionary}
+# Append the dictionary as the final sheet in the workbook. Because
+# add_sheet_to_excel() appends worksheets in call order and this is the last
+# call made against output_excel_path in this notebook, Column_Dictionary
+# ends up as the trailing sheet in the saved .xlsx file. Deliberately not
+# also printed inline here (knitr::kable(column_dictionary)) -- it is meant
+# to be read in the workbook, not duplicated in this notebook's own output.
+add_sheet_to_excel(output_excel_path, "Column_Dictionary", column_dictionary,
+                   rownames = FALSE, overwrite = TRUE)
+```
+
+The workbook is now complete. This reporting chunk prints and links it only after every data sheet and its column definitions have been written.
+
+```{r link-completed-workbook, echo=FALSE}
+# Confirm the final artifact and expose a portable link in the HTML report.
+cat("Column dictionary exported to:\n", output_excel_path, "\n")
+
+# This is the last chunk that writes to the shared output_excel_path
+# workbook, so document the finished file here.
+render_output_links(
+  output_excel_path,
+  labels = "PICRUSt2 pipeline run summary workbook (Excel)"
+)
+```
+
+------------------------------------------------------------------------
+
+# Output Interpretation {#output-interpretation}
+
+PICRUSt2 writes several complementary result families under [picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/). Interpret them together rather than treating any single file as a direct measurement: these are genome-content predictions inferred from marker-gene placement, and their reliability depends on how closely each ASV is related to a sequenced reference genome.
+
+-   **[KO_metagenome_out/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/)** contains community-level KEGG Ortholog abundances. [pred_metagenome_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv) is used by Step 4; [weighted_nsti.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/weighted_nsti.tsv) reports prediction distance by sample.
+-   **[EC_metagenome_out/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/EC_metagenome_out/)** contains community-level Enzyme Commission abundances. The retained per-ASV EC prediction table is reused in Step 5 to generate MetaCyc contribution tables.
+-   **[pathways_out/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/pathways_out/)** contains community-level MetaCyc pathway abundance and coverage predictions. [path_abun_unstrat.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/pathways_out/path_abun_unstrat.tsv) is the pathway table used downstream.
+-   **Marker prediction and placement files** include predicted 16S copy number and NSTI information for individual ASVs. [combined_marker_predicted_and_nsti.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/combined_marker_predicted_and_nsti.tsv) is the principal per-ASV quality table used by [Step 3](3_nsti_quality_assessment.md).
+-   **Intermediate placement files** are retained when `save_intermediate_files <- TRUE`. They are useful for diagnosing placement failures but are not normally needed for downstream statistical analysis.
+
+If [decompression](#decompress-outputs) ran, the tabular files appear without `.gz`; otherwise decompress the required files before running [Step 3](3_nsti_quality_assessment.md), [Step 4](4_functional_differential_abundance_analysis.md), or [Step 5](5_taxon_contribution.md). Review Step 3's NSTI assessment before interpreting downstream functional predictions, and report PICRUSt2 outputs explicitly as *predicted functional potential*, not measured gene expression or metabolite activity.
+
+------------------------------------------------------------------------
+
+# Output File Summary
+
+The tree below lists the completed run's output files and folders as clickable, portable links with short descriptions. It is built from the files present on disk after pipeline execution, optional decompression, and workbook documentation using the project's shared [render_output_tree_function.R](../functions/render_output_tree_function.R) helper.
+
+```{r output-summary, echo=FALSE}
+# Discover the current files at render time instead of maintaining a static
+# list that could become stale when PICRUSt2 changes its output tree.
+render_output_tree(
+  output_folder,
+  descriptions = c(
+  "picrust2_out_pipeline" = "Community-level PICRUSt2 run output folder",
+    "logs" = "Run log folder",
+    "picrust2_run_summary.xlsx" = "PICRUSt2 run summary workbook (Excel)"
+  )
+)
+```
+
+------------------------------------------------------------------------
+
+# Recommended Next Step
+
+With [picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/) populated above, proceed to [Step 3 — NSTI Quality Assessment](3_nsti_quality_assessment.md), which reads this notebook's [combined_marker_predicted_and_nsti.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/combined_marker_predicted_and_nsti.tsv) and [KO_metagenome_out/weighted_nsti.tsv](../../results/2_picrust2_pipeline/picrust2_out_pipeline/KO_metagenome_out/weighted_nsti.tsv) output directly to assess prediction quality before the differential-abundance analyses in Steps 4 and 5. Step 3 expects this notebook's output already decompressed, so leave `decompress_output_files <- TRUE` (the default set in [Configuration](#adjust-run-parameters)) unless you plan to decompress those two files manually.
+
+------------------------------------------------------------------------
+
+# Session Information
+
+Record the R environment for reproducibility.
+
+```{r session-info, echo=FALSE}
+# Capture R, platform, and attached-package versions in the executable report.
+sessionInfo()
+```
+
+------------------------------------------------------------------------
+
+# References
+
+## PICRUSt2
+
+-   [PICRUSt2 GitHub repository](https://github.com/picrust/picrust2)
+-   [PICRUSt2 wiki (user manual)](https://github.com/picrust/picrust2/wiki)
+-   [Full pipeline script documentation](https://github.com/picrust/picrust2/wiki/Full-pipeline-script)
+-   [PICRUSt2 Tutorial (v2.5.2)](https://github.com/picrust/picrust2/wiki/PICRUSt2-Tutorial-%28v2.5.2%29)
+-   [PICRUSt2 Key Limitations](https://github.com/picrust/picrust2/wiki/Key-Limitations)
+-   [PICRUSt2-SC database](https://github.com/picrust/picrust2/wiki/PICRUSt2%E2%80%90SC-database)
+
+## Related
+
+-   [Step 1 — Prepare PICRUSt2 Inputs](1_prepare_picrust2_inputs.md) — this notebook's required input.
+-   [Step 3 — NSTI Quality Assessment](3_nsti_quality_assessment.md) — this notebook's recommended next step.
+
+------------------------------------------------------------------------
+
+# Appendix: Troubleshooting Guide
+
+## Common Issues and Solutions
+
+### conda Not Found / "Could not automatically determine which conda executable to use"
+
+**Error**: `Could not run '...'` or `Could not automatically determine which conda executable to use`
+
+**Cause**: `resolve_conda_executable()` (in [Configuration](#adjust-run-parameters)) could not find a usable conda either via `Sys.which("conda")` or by asking your login shell (`$SHELL`) for its `$CONDA_EXE`. This can happen if conda is not installed, or if `conda init` was never run for your shell (so `CONDA_EXE` is never set).
+
+**Solutions**:
+
+-   Confirm conda (Miniconda, Miniforge, or Anaconda) is installed: see [install_picrust2.sh](../../setup/install_picrust2.sh).
+-   In a terminal, confirm `conda init` has been run for your shell (re-run `conda init zsh` or `conda init bash` as appropriate, then open a new terminal tab and confirm `echo $CONDA_EXE` prints a path).
+-   As a last resort, set `conda_executable` manually in the [Configuration](#adjust-run-parameters) section to the full path of your conda executable.
+
+### PICRUSt2 Conda Environment Not Found
+
+**Error**: `No conda environment named '<configured name>' was found by '...'`
+
+**Cause**: The error message lists every environment the resolved `conda_executable` can actually see. If the name configured by `PICRUST2_CONDA_ENV_NAME` (default: `picrust2`) is missing even though you created it, `resolve_conda_executable()` may have selected a different conda installation than the one `install_picrust2.sh` used — this can happen if more than one conda installation is configured in your shell's startup files.
+
+**Solutions**:
+
+-   If the environment is genuinely missing, run [install_picrust2.sh](../../setup/install_picrust2.sh) from the repository root to create it.
+-   Check what the "Conda Configuration" message earlier in this notebook reported for `conda_executable`, and compare it against `echo $CONDA_EXE` in a terminal. If they differ, multiple conda installations are configured on this machine; as a last resort, set `conda_executable` manually in the [Configuration](#adjust-run-parameters) section to the full path from your terminal's `$CONDA_EXE`.
+-   If you installed PICRUSt2 under a different environment name, update `conda_env_name` in the [Configuration](#adjust-run-parameters) section instead.
+
+### `EnvironmentLocationNotFound: Not a conda environment: .../envs/picrust2`
+
+**Symptom**: This exact error appears in the run log even though the "Verify PICRUSt2 Installation" section passed — i.e. `conda env list` correctly found and listed `picrust2`, but the run itself still failed.
+
+**Cause**: This is a known inconsistency in some conda versions: `conda run -n <name>` (looking a environment up **by name**) can fail to resolve a named environment in certain non-interactive contexts — such as a subprocess spawned by R/RStudio — even when `conda env list` (a simpler, more direct lookup) finds it without issue.
+
+**What this notebook does about it**: Every `conda run` call uses `-p <full path to the environment>` (a literal directory, resolved once in the "Verify PICRUSt2 Installation" section as `conda_env_prefix`) instead of `-n <name>`. This bypasses the named-environment lookup machinery entirely, so it does not depend on that machinery working correctly in whatever context this notebook happens to run in.
+
+**If you still see this error**: It means even path-based lookup is failing, which points to the environment directory itself being invalid. Confirm `conda-meta/history` exists inside it (e.g. via `ls "<conda_env_prefix>/conda-meta/history"`, using the path printed by the "Conda Configuration" / "PICRUSt2 Installation Check" messages earlier in this notebook) — if it's missing, the environment is genuinely broken and needs to be removed and recreated with `install_picrust2.sh`.
+
+### `hsp.py` Fails With an Rcpp Architecture-Mismatch Error
+
+**Symptom**: Sequence placement succeeds, but the run stops during marker prediction or NSTI calculation. The log reports `WARNING: ignoring environment value of R_HOME` followed by an `Rcpp.so` error such as `incompatible architecture (have 'arm64', need 'x86_64')`.
+
+**Cause**: `hsp.py` runs a nested R script using the R installation inside the PICRUSt2 conda environment. When Step 2 is launched from RStudio, R-specific environment variables inherited from the parent session can redirect that child process to packages in the system R library. If system R and conda R use different architectures, compiled packages such as Rcpp cannot be loaded.
+
+**What this notebook does about it**: Both the PICRUSt2 installation check and the full pipeline command are run through the `env` executable resolved from `PATH`, using `-u` to remove `R_HOME`, `R_LIBS`, `R_LIBS_USER`, `R_LIBS_SITE`, `R_ENVIRON`, `R_ENVIRON_USER`, `R_PROFILE`, and `R_PROFILE_USER` before conda starts. This forces the nested R process to use the R installation and packages belonging to the PICRUSt2 environment.
+
+**Before retrying**: Remove or rename the incomplete [picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/) directory because PICRUSt2 intentionally refuses to write into an existing output directory.
+
+### Run "Succeeds" but No Output Files Appear
+
+**Symptom**: The notebook completes without an R error, `Exit Code` in the run summary shows `0`, but `picrust2_out_pipeline/` is empty, missing, or incomplete.
+
+**Cause**: `conda run` does not always reliably forward a real failure inside `picrust2_pipeline.py` as a non-zero exit code back to R — this is a known inconsistency across conda versions. An exit code of `0` therefore does not, on its own, guarantee the run actually completed.
+
+**What this notebook now does about it**: The run is checked for the expected community pathway output (`pathways_out/path_abun_unstrat.tsv.gz` or its decompressed `.tsv` counterpart), regardless of the reported exit code. If neither file exists, a warning is raised, the last 40 lines of the run log are printed, and `Verified Output` in the [Results Summary](#summary-stats) table shows `FALSE` even if `Exit Code` shows `0`.
+
+**Actions**:
+
+-   Re-run the notebook and look at the printed log excerpt (or open the full log at [results/2_picrust2_pipeline/logs/picrust2_run.log](../../results/2_picrust2_pipeline/logs/picrust2_run.log)) — this will contain the actual Python traceback or error from PICRUSt2.
+-   Common underlying causes worth checking first: insufficient memory for the requested `num_threads`, a `-o` directory that was partially created by a previous killed run (remove it and retry), or a reference-database issue from an incomplete `install_picrust2.sh` run.
+-   If the log itself is empty or missing, the process may have been killed by the OS (e.g. out-of-memory) before it could write anything — try lowering `num_threads` and re-running.
+
+### Output Directory Already Exists
+
+**Error**: `Output directory already exists`
+
+**Cause**: `picrust2_pipeline.py` refuses to write into an existing output directory to avoid silently mixing results from different runs.
+
+**Actions**:
+
+-   Remove or rename the existing [picrust2_out_pipeline/](../../results/2_picrust2_pipeline/picrust2_out_pipeline/) directory if you intend to overwrite it.
+-   Otherwise, change `picrust2_run_dir` in the [Configuration](#define-paths) section to a new path.
+-   To refresh the report from an already complete community-level run without launching PICRUSt2, set `PICRUST2_REUSE_EXISTING_OUTPUTS=true`; unprovable historical settings remain `NA` in the summary.
+
+### Sequence Placement Failures
+
+**Symptom**: The run fails during the placement step, or very few ASVs are retained.
+
+**Possible causes**:
+
+-   Input sequences are too short, too degenerate, or not actually 16S rRNA sequences.
+-   Too few reference sequences are sufficiently similar to the study sequences (common for poorly represented environments — see the [PICRUSt2 Key Limitations](https://github.com/picrust/picrust2/wiki/Key-Limitations) reference).
+
+**Actions**:
+
+-   Check `picrust2_log_path` for the specific EPA-NG/gappa error.
+-   Consider the `--placement_tool sepp` option (edit the argument vector in the [Run PICRUSt2 Pipeline](#run-picrust2-pipeline) section) as an alternative placement method.
+-   If `save_intermediate_files` was `FALSE` on the failed run, the `intermediate/` folder (including the `.jplace` placement files) will not be available for further diagnosis — rerun with `save_intermediate_files <- TRUE` to inspect them.
+
+### Memory or Runtime Issues
+
+**Symptom**: The run is killed, runs out of memory, or takes far longer than expected.
+
+**Cause**: Sequence placement and hidden-state prediction can be resource-intensive for large ASV sets, particularly when many worker processes run concurrently.
+
+**Actions**:
+
+-   Lower `num_threads` in the [Configuration](#adjust-run-parameters) section if the machine is memory-constrained (more threads means more concurrent memory use).
+-   Run on a machine with more RAM/cores for large ASV sets (tens of thousands of ASVs).
+
+### Some Files Were Not Decompressed
+
+**Symptom**: The [Decompress Output Files](#decompress-outputs) section reports fewer successes than compressed files found (`n_succeeded < n_found`), or a warning like `Failed to decompress ...`.
+
+**Cause**: Usually a truncated/corrupt `.gz` file (for example, from a run that was killed mid-write), or insufficient disk space to hold both the compressed and decompressed copies simultaneously while the file is being written.
+
+**Actions**:
+
+-   Check the specific warning message printed above the summary table — it names the exact file and the underlying error.
+-   Files that fail to decompress are left in their original compressed form (nothing is deleted on failure), so no data is lost. Correct the underlying issue (for example, insufficient disk space or a corrupt archive), then re-run this section.
+-   If a file is genuinely corrupt, re-run this notebook's pipeline chunk to regenerate it.
+-   To skip decompression entirely and keep all outputs compressed, set `decompress_output_files <- FALSE` in [Configuration](#adjust-run-parameters).

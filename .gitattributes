@@ -1,0 +1,31 @@
+# Normalize source and documentation text to LF across platforms.
+* text=auto
+*.R text eol=lf
+*.Rmd text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+# Pandoc's self-contained HTML embeds third-party assets that contain trailing
+# spaces; do not treat those generated lines as source whitespace errors.
+*.html whitespace=-blank-at-eol,-blank-at-eof
+*.sh text eol=lf
+*.tsv text eol=lf
+*.csv text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.fasta text eol=lf
+*.fna text eol=lf
+
+# Preserve binary scientific data, reports, images, and archives.
+*.RData binary
+*.rds binary
+*.biom binary
+*.xlsx binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.gz binary
+*.zip binary
+*.parquet binary
