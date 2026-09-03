@@ -32,7 +32,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 
 ------------------------------------------------------------------------
 
-## Key Features {#key-features}
+## Key Features
 
 - **DADA2-compatible inputs** — Validates sample-by-ASV count data and representative sequences before creating matched BIOM and FASTA files
 - **Complete PICRUSt2 prediction** — Produces marker-copy-number, KO, EC, MetaCyc pathway, and NSTI outputs using the standard PICRUSt2 pipeline
@@ -46,7 +46,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 
 ------------------------------------------------------------------------
 
-## Pipeline Overview {#pipeline-overview}
+## Pipeline Overview
 
 ``` text
         DADA2 ASV count, sequence,
@@ -92,7 +92,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 
 ------------------------------------------------------------------------
 
-## Setup {#setup}
+## Setup
 
 ### 1. Clone the Repository
 
@@ -143,7 +143,7 @@ These files are not included in the repository and are ignored by Git. See [data
 
 ------------------------------------------------------------------------
 
-## Running the Pipeline {#running-the-pipeline}
+## Running the Pipeline
 
 Run the numbered notebooks in order from the project root. In RStudio, use **Knit** with the HTML output to execute the analysis and create a complete interactive report. Select **Knit to github_document** when you want to refresh the repository Markdown without executing the analysis. No separate document-rendering script is required.
 
@@ -169,13 +169,13 @@ Runs the stratified KO, EC, and MetaCyc prediction stages and analyzes both Meta
 
 ------------------------------------------------------------------------
 
-## Column Dictionaries {#column-dictionaries}
+## Column Dictionaries
 
 Every Excel workbook ends with a `Column_Dictionary` sheet documenting each exported column in plain language. The dictionaries are generated from the actual output tables with [R/functions/build_column_dictionary_function.R](R/functions/build_column_dictionary_function.R), reducing the risk that workbook documentation drifts from the analysis code.
 
 ------------------------------------------------------------------------
 
-## Project Structure {#project-structure}
+## Project Structure
 
 ``` text
 PICRUSt2_16S_Functional_Inference_Workflow/
@@ -215,7 +215,7 @@ PICRUSt2_16S_Functional_Inference_Workflow/
 
 ------------------------------------------------------------------------
 
-## References {#references}
+## References
 
 ### Core Functional-Inference Methods
 
@@ -236,13 +236,13 @@ PICRUSt2_16S_Functional_Inference_Workflow/
 
 ------------------------------------------------------------------------
 
-## License {#license}
+## License
 
 This project is released under the [MIT License](LICENSE).
 
 ------------------------------------------------------------------------
 
-## Acknowledgments {#acknowledgments}
+## Acknowledgments
 
 - [PICRUSt2](https://github.com/picrust/picrust2) developers and the Huttenhower Lab for the functional-inference framework and documentation
 - [ggpicrust2](https://github.com/cafferychen777/ggpicrust2), [MicrobiomeStat](https://github.com/cafferychen777/MicrobiomeStat), and [MaAsLin2](https://bioconductor.org/packages/release/bioc/html/Maaslin2.html) developers for the downstream functional-analysis methods and implementations
