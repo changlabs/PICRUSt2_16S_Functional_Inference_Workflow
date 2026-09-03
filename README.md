@@ -2,7 +2,7 @@
 
 [![R Version](https://img.shields.io/badge/R-%3E%3D4.1-blue)](https://www.r-project.org/) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![PICRUSt2](https://img.shields.io/badge/PICRUSt2-functional%20inference-087f86)](https://github.com/picrust/picrust2) [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey)](#setup)
 
-A reproducible R-based workflow for converting DADA2 ASV outputs into [PICRUSt2](https://github.com/picrust/picrust2) functional predictions, evaluating prediction quality with NSTI, testing MetaCyc and KEGG pathway differential abundance, and tracing selected pathway predictions back to contributing taxa.
+A reproducible R-based workflow for converting DADA2 ASV outputs into [PICRUSt2](https://github.com/picrust/picrust2) functional predictions, evaluating prediction quality with NSTI (Nearest Sequenced Taxon Index), testing MetaCyc and KEGG pathway differential abundance, and tracing selected pathway predictions back to contributing taxa.
 
 PICRUSt2 results represent **predicted functional potential** inferred from marker-gene data. They are not direct measurements of genes, transcripts, proteins, metabolites, or pathway activity.
 
@@ -32,7 +32,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 
 ------------------------------------------------------------------------
 
-## Key Features
+## Key Features {#key-features}
 
 - **DADA2-compatible inputs** — Validates sample-by-ASV count data and representative sequences before creating matched BIOM and FASTA files
 - **Complete PICRUSt2 prediction** — Produces marker-copy-number, KO, EC, MetaCyc pathway, and NSTI outputs using the standard PICRUSt2 pipeline
@@ -42,12 +42,11 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 - **Stratified taxon contributions** — Links selected MetaCyc and KEGG pathway predictions to contributing ASVs, genera, and phyla
 - **Interactive visualizations** — Generates shareable Plotly NSTI plots and condition-split genus/phylum contribution heatmaps
 - **Documented Excel outputs** — Every workbook ends with a `Column_Dictionary` sheet explaining its exported columns
-- **Private local inputs** — Study files under `data/` are ignored by Git; only their format documentation is tracked
 - **Reproducible paths and reports** — All code uses project-relative paths, and every notebook supports an executable HTML report plus a non-executing GitHub Markdown document
 
 ------------------------------------------------------------------------
 
-## Pipeline Overview
+## Pipeline Overview {#pipeline-overview}
 
 ``` text
         DADA2 ASV count, sequence,
@@ -93,7 +92,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 
 ------------------------------------------------------------------------
 
-## Setup
+## Setup {#setup}
 
 ### 1. Clone the Repository
 
@@ -144,7 +143,7 @@ These files are not included in the repository and are ignored by Git. See [data
 
 ------------------------------------------------------------------------
 
-## Running the Pipeline
+## Running the Pipeline {#running-the-pipeline}
 
 Run the numbered notebooks in order from the project root. In RStudio, use **Knit** with the HTML output to execute the analysis and create a complete interactive report. Select **Knit to github_document** when you want to refresh the repository Markdown without executing the analysis. No separate document-rendering script is required.
 
@@ -170,13 +169,13 @@ Runs the stratified KO, EC, and MetaCyc prediction stages and analyzes both Meta
 
 ------------------------------------------------------------------------
 
-## Column Dictionaries
+## Column Dictionaries {#column-dictionaries}
 
 Every Excel workbook ends with a `Column_Dictionary` sheet documenting each exported column in plain language. The dictionaries are generated from the actual output tables with [R/functions/build_column_dictionary_function.R](R/functions/build_column_dictionary_function.R), reducing the risk that workbook documentation drifts from the analysis code.
 
 ------------------------------------------------------------------------
 
-## Project Structure
+## Project Structure {#project-structure}
 
 ``` text
 PICRUSt2_16S_Functional_Inference_Workflow/
@@ -216,7 +215,7 @@ PICRUSt2_16S_Functional_Inference_Workflow/
 
 ------------------------------------------------------------------------
 
-## References
+## References {#references}
 
 ### Core Functional-Inference Methods
 
@@ -237,13 +236,13 @@ PICRUSt2_16S_Functional_Inference_Workflow/
 
 ------------------------------------------------------------------------
 
-## License
+## License {#license}
 
 This project is released under the [MIT License](LICENSE).
 
 ------------------------------------------------------------------------
 
-## Acknowledgments
+## Acknowledgments {#acknowledgments}
 
 - [PICRUSt2](https://github.com/picrust/picrust2) developers and the Huttenhower Lab for the functional-inference framework and documentation
 - [ggpicrust2](https://github.com/cafferychen777/ggpicrust2), [MicrobiomeStat](https://github.com/cafferychen777/MicrobiomeStat), and [MaAsLin2](https://bioconductor.org/packages/release/bioc/html/Maaslin2.html) developers for the downstream functional-analysis methods and implementations
