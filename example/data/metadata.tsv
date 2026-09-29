@@ -1,0 +1,11 @@
+SampleID	Condition	Reference
+S01	Control	TRUE
+S02	Control	TRUE
+S03	Control	TRUE
+S04	Control	TRUE
+S05	Control	TRUE
+S06	Treatment	FALSE
+S07	Treatment	FALSE
+S08	Treatment	FALSE
+S09	Treatment	FALSE
+S10	Treatment	FALSE

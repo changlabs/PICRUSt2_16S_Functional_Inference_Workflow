@@ -377,9 +377,10 @@ expected upstream file cannot be found – so a missing prerequisite is
 caught immediately, before any computation begins.
 
 ``` r
-# Base folders, mirroring the layout established in Steps 1-2
-data_folder    <- here("data")
-results_folder <- here("results")
+# Base folders, mirroring the layout established in Steps 1-2. The example
+# runner overrides both so its test data and outputs remain isolated.
+data_folder    <- here(Sys.getenv("PICRUST2_DATA_DIR", unset = "data"))
+results_folder <- here(Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"))
 
 # Step 1's output (this notebook's ASV abundance input)
 step1_output_folder <- here(results_folder, "1_prepare_picrust2_inputs")

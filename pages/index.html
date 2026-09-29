@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Executable R Markdown notebooks for PICRUSt2-based functional inference from 16S rRNA amplicon sequencing data.">
+  <meta name="description" content="Executed all-step reports for the bundled PICRUSt2 16S functional-inference example dataset.">
   <meta name="theme-color" content="#315f72">
   <title>PICRUSt2 16S Functional Inference Workflow</title>
   <style>
@@ -14,10 +14,6 @@
       --teal: #087f86;
       --teal-dark: #05656b;
       --teal-pale: #e5f4f3;
-      --amber: #d6aa16;
-      --amber-pale: #fff3df;
-      --green: #16835d;
-      --green-pale: #e3f5ec;
       --required: #c65353;
       --ink: #183746;
       --muted: #5d7783;
@@ -67,6 +63,12 @@
       align-items: end;
       margin-bottom: 14px;
     }
+    .intro {
+      max-width: 980px;
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
     .legend {
       display: flex;
       flex-wrap: wrap;
@@ -93,8 +95,6 @@
       border-radius: 50%;
       content: "";
     }
-    .legend .recommended::before { background: var(--amber); }
-    .legend .optional::before { background: var(--green); }
 
     .workflow {
       display: grid;
@@ -119,8 +119,6 @@
       border-color: #9fc9d3;
       box-shadow: var(--shadow);
     }
-    .card.optional { border-top-color: var(--green); }
-    .card.recommended { border-top-color: var(--amber); }
     .card-top {
       display: flex;
       justify-content: space-between;
@@ -231,11 +229,10 @@
   </header>
 
   <main id="notebooks">
+    <p class="intro">Browse executed reports from the bundled 10-sample, 1,468-ASV example. The complete example runs all five steps, including NSTI assessment and both MetaCyc and KEGG branches. The abundance and sequence tables were derived from human stool samples generated in our laboratory, then randomly reduced and anonymized for demonstration purposes; group and taxonomy annotations are synthetic test labels.</p>
     <div class="section-head">
       <div class="legend" aria-label="Step status legend">
         <span>Required</span>
-        <span class="recommended">Recommended</span>
-        <span class="optional">Optional</span>
       </div>
     </div>
 
@@ -245,7 +242,7 @@
         <h2>Prepare PICRUSt2 Inputs</h2>
         <p>Validate DADA2 count and sequence tables, then create matched BIOM and FASTA inputs.</p>
         <div class="actions">
-          <a class="report-link" href="notebooks/1_prepare_picrust2_inputs.html">Example</a>
+          <a class="report-link" href="reports/1_prepare_picrust2_inputs.html">Executed example</a>
           <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/1_prepare_picrust2_inputs.md">GitHub</a>
         </div>
       </article>
@@ -255,17 +252,17 @@
         <h2>Run the PICRUSt2 Pipeline</h2>
         <p>Predict community KO, EC, MetaCyc, marker-copy-number, and NSTI profiles.</p>
         <div class="actions">
-          <a class="report-link" href="notebooks/2_picrust2_pipeline.html">Example</a>
+          <a class="report-link" href="reports/2_picrust2_pipeline.html">Executed example</a>
           <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/2_picrust2_pipeline.md">GitHub</a>
         </div>
       </article>
 
-      <article class="card recommended">
+      <article class="card">
         <div class="card-top"><span class="step">Step 3</span></div>
         <h2>Assess NSTI Quality</h2>
         <p>Review prediction distances, excluded-read fractions, and sample-level NSTI summaries.</p>
         <div class="actions">
-          <a class="report-link" href="notebooks/3_nsti_quality_assessment.html">Example</a>
+          <a class="report-link" href="reports/3_nsti_quality_assessment.html">Executed example</a>
           <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/3_nsti_quality_assessment.md">GitHub</a>
         </div>
       </article>
@@ -275,17 +272,17 @@
         <h2>Functional Differential Abundance</h2>
         <p>Test MetaCyc and KEGG pathways with LinDA and MaAsLin2 and report method agreement.</p>
         <div class="actions">
-          <a class="report-link" href="notebooks/4_functional_differential_abundance_analysis.html">Example</a>
+          <a class="report-link" href="reports/4_functional_differential_abundance_analysis.html">Executed example</a>
           <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/4_functional_differential_abundance_analysis.md">GitHub</a>
         </div>
       </article>
 
-      <article class="card optional">
+      <article class="card">
         <div class="card-top"><span class="step">Step 5</span></div>
         <h2>Taxon Contributions</h2>
         <p>Trace selected MetaCyc and KEGG predictions to contributing genera and phyla.</p>
         <div class="actions">
-          <a class="report-link" href="notebooks/5_taxon_contribution.html">Example</a>
+          <a class="report-link" href="reports/5_taxon_contribution.html">Executed example</a>
           <a class="source-link" href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/5_taxon_contribution.md">GitHub</a>
         </div>
       </article>
@@ -293,8 +290,8 @@
 
     <section class="repo-panel" aria-labelledby="repository-title">
       <div>
-        <h2 id="repository-title">Run the workflow with your own data</h2>
-        <p>Open the repository for installation instructions, data templates, editable R Markdown notebooks, and source functions.</p>
+        <h2 id="repository-title">Run or inspect the bundled example</h2>
+        <p>Open the repository for the one-command runner, input files, data provenance, compact outputs, and editable R Markdown notebooks.</p>
       </div>
       <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow">Open GitHub repository</a>
     </section>

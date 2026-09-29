@@ -51,7 +51,7 @@ Step 1: Prepare PICRUSt2 Input Files from DADA2 Results
 This notebook is **Step 1** of the PICRUSt2 functional prediction
 workflow. It prepares the two input files
 [PICRUSt2](https://github.com/picrust/picrust2/wiki) requires — a
-[BIOM](http://biom-format.org/)-format feature (OTU/ASV) table and a
+[BIOM](https://biom-format.org/)-format feature (OTU/ASV) table and a
 FASTA file of representative marker-gene sequences — by reformatting the
 ASV abundance table and representative sequences produced by the DADA2
 pipeline.
@@ -83,12 +83,12 @@ The workflow accomplishes the following tasks:
     exported by DADA2.
 2.  **Matrix Transposition**: Transposes the table to the feature (ASV)
     x sample orientation required by the [BIOM
-    specification](http://biom-format.org/).
+    specification](https://biom-format.org/).
 3.  **ASV/Sequence Consistency Check**: Verifies that every ASV in the
     count table has a corresponding sequence, and flags any mismatches
     before writing output.
 4.  **BIOM Table Construction**: Converts the transposed count matrix
-    into a [BIOM](http://biom-format.org/) object and writes it to disk
+    into a [BIOM](https://biom-format.org/) object and writes it to disk
     in BIOM 1.0 (JSON) format.
 5.  **FASTA Construction**: Validates each ASV sequence as a proper DNA
     string using
@@ -218,11 +218,13 @@ paths are relative to the project root, making the script portable
 across different systems.
 
 ``` r
-# Base data folder containing the DADA2-derived ASV table and sequence mapping
-data_folder <- here("data")
+# Base data folder containing the DADA2-derived ASV table and sequence mapping.
+# The override keeps bundled example runs isolated from normal study inputs.
+data_folder <- here(Sys.getenv("PICRUST2_DATA_DIR", unset = "data"))
 
-# Base results folder for all pipeline outputs
-results_folder <- here("results")
+# Base results folder for all pipeline outputs. The example runner overrides it
+# so testing never writes to the normal results/ tree.
+results_folder <- here(Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"))
 
 # Output folder for this step's results, numbered for pipeline step tracking
 output_folder <- here(results_folder, "1_prepare_picrust2_inputs")
@@ -343,7 +345,7 @@ cat("Imported", nrow(asv_sequences), "ASV sequences.\n")
 
 ## Transpose Count Table
 
-[BIOM](http://biom-format.org/) tables are stored as observations
+[BIOM](https://biom-format.org/) tables are stored as observations
 (features/ASVs) x samples, which is the transpose of the sample x ASV
 layout produced by DADA2.
 
@@ -402,7 +404,7 @@ cat("ASV/sequence consistency check passed:", nrow(asv_sequences), "ASVs shared 
 ## Build and Export the BIOM Table
 
 Convert the validated count matrix into a
-[BIOM](http://biom-format.org/) object and write it to disk in BIOM 1.0
+[BIOM](https://biom-format.org/) object and write it to disk in BIOM 1.0
 (JSON) format, as expected by picrust2.
 
 ``` r
@@ -710,7 +712,7 @@ Record the R environment for reproducibility.
   Observation Matrix (BIOM) format or: how I learned to stop worrying
   and love the ome-ome. *GigaScience* 1, 7.
   <https://doi.org/10.1186/2047-217X-1-7> (defines the
-  [BIOM](http://biom-format.org/) format written by this notebook.)
+  [BIOM](https://biom-format.org/) format written by this notebook.)
 - Douglas GM, Maffei VJ, Zaneveld JR, et al. (2020). PICRUSt2 for
   prediction of metagenome functions. *Nat Biotechnol* 38, 685-688.
   <https://doi.org/10.1038/s41587-020-0548-6>

@@ -8,7 +8,7 @@
 #     official installation instructions published by the Huttenhower Lab:
 #     https://huttenhower.sph.harvard.edu/picrust/
 #   - No version is pinned by default. Set PICRUST2_PACKAGE_SPEC (for example,
-#     "picrust2=2.5.2") when a project-specific version constraint is needed.
+#     "picrust2=2.6.3") when a project-specific version constraint is needed.
 #   - Linux only. The script exits before making changes on other operating
 #     systems.
 #
@@ -34,7 +34,7 @@
 #
 # Optional configuration without editing this file:
 #   PICRUST2_CONDA_ENV_NAME=picrust2_project \
-#   PICRUST2_PACKAGE_SPEC='picrust2=2.5.2' \
+#   PICRUST2_PACKAGE_SPEC='picrust2=2.6.3' \
 #   ./setup/install_picrust2.sh
 #
 ################################################################################

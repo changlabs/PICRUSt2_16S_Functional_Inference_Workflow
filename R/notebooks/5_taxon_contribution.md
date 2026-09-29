@@ -278,7 +278,9 @@ group_column <- "Condition"
 # ranks. Supply a real DADA2 SILVA or GTDB taxonomy export. Genus- and
 # phylum-level heatmaps require this table.
 # ------------------------------------------------------------------
-taxonomy_table_path <- here("data", "asv_taxonomy.csv")
+taxonomy_table_path <- here(
+  Sys.getenv("PICRUST2_DATA_DIR", unset = "data"), "asv_taxonomy.csv"
+)
 # Copy a SILVA or GTDB taxonomy table produced by a DADA2 workflow to this
 # standard location. The notebook stops clearly if it is absent because both
 # requested heatmaps depend on taxonomy ranks.
@@ -396,7 +398,8 @@ if (length(metacyc_pathway_ids_of_interest) == 0) {
   # Automatic selection ranks community-level MetaCyc pathways by abundance
   # summed over every sample. It is deterministic for a fixed Step 2 table.
   abundance_path <- resolve_readable_table(here(
-    "results", "2_picrust2_pipeline", "picrust2_out_pipeline",
+    Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"),
+    "2_picrust2_pipeline", "picrust2_out_pipeline",
     "pathways_out", "path_abun_unstrat.tsv"
   ))
   if (!is.na(abundance_path)) {
@@ -445,9 +448,10 @@ This chunk resolves all Step 1, Step 2, metadata, and Step 5 paths. Step
 outputs generated here remain compressed.
 
 ``` r
-# Base folders
-results_folder <- here("results")
-data_folder    <- here("data")
+# Base folders. The example runner overrides both so its test data and outputs
+# remain isolated from normal study data and results.
+results_folder <- here(Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"))
+data_folder    <- here(Sys.getenv("PICRUST2_DATA_DIR", unset = "data"))
 
 # Step 1 BIOM table and Step 2 community-level prediction outputs.
 step1_output_folder <- here(results_folder, "1_prepare_picrust2_inputs")

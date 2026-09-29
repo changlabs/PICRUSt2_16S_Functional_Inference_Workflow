@@ -4784,9 +4784,14 @@ border-radius: 0px;
 
 
 
+<style id="reference-report-link-status">
+.reference-report-note { margin: 1rem auto; max-width: 1200px; padding: .8rem 1rem; border-left: 4px solid #2f6f73; background: #eef7f7; color: #243b3d; font-size: .95rem; }
+.reference-omitted { color: #5f6368; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+</style>
 </head>
 
 <body>
+<aside class="reference-report-note" role="note"><strong>Compact reference report:</strong> Links remain active for outputs bundled under <code>example/reference_results/</code>. Dotted labels identify files produced by a complete local run but intentionally omitted from the compact bundle. Run <code>Rscript example/run_example.R</code> to recreate the full output tree under <code>example/run_results/</code>.</aside>
 
 
 <div class="container-fluid main-container">
@@ -4890,7 +4895,7 @@ time.</p>
 metadata/taxonomy files.</strong> It reuses Step 1’s BIOM table and Step
 2’s predicted marker, KO, and EC tables. You may list pathways
 explicitly in <a href="#adjust-analysis-parameters">Configuration</a>,
-including candidates identified in <a href="4_functional_differential_abundance_analysis.md">Step 4</a>, or
+including candidates identified in <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/4_functional_differential_abundance_analysis.md">Step 4</a>, or
 leave the lists empty to select the most abundant predictions from Step
 2 automatically.</p>
 </div>
@@ -4916,18 +4921,18 @@ community-level data alone.</p>
 <h2><span class="header-section-number">1.2</span> Prerequisites</h2>
 <p>Before running this notebook, ensure that:</p>
 <ol style="list-style-type: decimal">
-<li>Required R packages are installed — run <a href="../../setup/install_R_dependencies.R">setup/install_R_dependencies.R</a>
+<li>Required R packages are installed — run <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/setup/install_R_dependencies.R">setup/install_R_dependencies.R</a>
 once per R environment (this includes <code>data.table</code>, used here
 for the streaming pre-filter).</li>
-<li><strong>Step 1 (<a href="1_prepare_picrust2_inputs.Rmd">1_prepare_picrust2_inputs.Rmd</a>)</strong>
+<li><strong>Step 1 (<a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/1_prepare_picrust2_inputs.Rmd">1_prepare_picrust2_inputs.Rmd</a>)</strong>
 has produced <code>study_seqs.biom</code>.</li>
-<li><strong>Step 2 (<a href="2_picrust2_pipeline.Rmd">2_picrust2_pipeline.Rmd</a>)</strong> has
+<li><strong>Step 2 (<a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/2_picrust2_pipeline.Rmd">2_picrust2_pipeline.Rmd</a>)</strong> has
 completed its community-level run, including
 <code>combined_marker_predicted_and_nsti.tsv</code>,
 <code>combined_KO_predicted.tsv</code>, and
 <code>combined_EC_predicted.tsv</code> (plain or gzip-compressed).</li>
-<li><strong><a href="../../data/metadata.tsv">data/metadata.tsv</a></strong> has been
-filled in with real sample metadata (see <a href="../../data/README.md">data/README.md</a>).</li>
+<li><strong><a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/example/data/metadata.tsv">data/metadata.tsv</a></strong> has been
+filled in with real sample metadata (see <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/data/README.md">data/README.md</a>).</li>
 <li>Working <code>gzip</code> and <code>awk</code> commands are
 available on <code>PATH</code> for memory-safe filtering.</li>
 <li>Optionally list MetaCyc pathway IDs in
@@ -4992,13 +4997,13 @@ statistical or phylogenetic similarity.</li>
 <div id="expected-input" class="section level2" number="1.5">
 <h2><span class="header-section-number">1.5</span> Expected Input</h2>
 <ul>
-<li><a href="../../results/1_prepare_picrust2_inputs/study_seqs.biom">results/1_prepare_picrust2_inputs/study_seqs.biom</a>
+<li><a href="../1_prepare_picrust2_inputs/study_seqs.biom">results/1_prepare_picrust2_inputs/study_seqs.biom</a>
 — Step 1 feature table.</li>
-<li><a href="../../results/2_picrust2_pipeline/picrust2_out_pipeline/">results/2_picrust2_pipeline/picrust2_out_pipeline/</a>
+<li><a href="../2_picrust2_pipeline/picrust2_out_pipeline/">results/2_picrust2_pipeline/picrust2_out_pipeline/</a>
 — Step 2 marker, KO, and EC prediction tables plus community-level
 MetaCyc and KO abundance tables used for automatic pathway
 selection.</li>
-<li><a href="../../data/metadata.tsv">data/metadata.tsv</a> — sample
+<li><a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/example/data/metadata.tsv">data/metadata.tsv</a> — sample
 metadata with the required <code>SampleID</code>,
 <code>Condition</code>, and <code>Reference</code> columns.</li>
 <li><code>data/asv_taxonomy.csv</code> — a user-supplied
@@ -5011,13 +5016,13 @@ workflow.</li>
 <div id="expected-output" class="section level2" number="1.6">
 <h2><span class="header-section-number">1.6</span> Expected Output</h2>
 <ul>
-<li><a href="../../results/5_taxon_contribution/stratified_pipeline/">results/5_taxon_contribution/stratified_pipeline/</a>
+<li><span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">results/5_taxon_contribution/stratified_pipeline/</span>
 — compressed KO, EC, and MetaCyc contribution tables plus run logs.</li>
-<li><a href="../../results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx">results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</a>
+<li><a href="../5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx">results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</a>
 — native MetaCyc contribution results.</li>
-<li><a href="../../results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx">results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</a>
+<li><a href="../5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx">results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</a>
 — KEGG pathway-to-KO mapping and contribution results.</li>
-<li><a href="../../results/5_taxon_contribution/">results/5_taxon_contribution/</a>
+<li><a href="../5_taxon_contribution/">results/5_taxon_contribution/</a>
 — interactive HTML heatmaps and the corresponding workbooks.</li>
 </ul>
 <hr />
@@ -5032,7 +5037,7 @@ Packages</h2>
 the shared helpers used for Excel writing, column-dictionary
 documentation, clickable output links, output-tree reporting,
 memory-safe contribution processing, KEGG aggregation, and interactive
-heatmaps (each sourced from <a href="../functions/">R/functions/</a>).</p>
+heatmaps (each sourced from <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/tree/main/R/functions/">R/functions/</a>).</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># </span><span class="al">NOTE</span><span class="co">: This chunk assumes the packages below are already installed. If any</span></span>
 <span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="co"># library() call fails with &quot;there is no package called ...&quot;, run</span></span>
 <span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="co"># setup/install_R_dependencies.R once to install every package this</span></span>
@@ -5272,7 +5277,7 @@ automatic selection from Step 2’s community-level abundance tables.</p>
 ##  - Minimum reads per function: 1 
 ##  - Minimum samples per function: 1 
 ##  - Condition column: Condition 
-##  - Taxonomy table: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/data/asv_taxonomy.csv 
+##  - Taxonomy table: PROJECT_ROOT/data/asv_taxonomy.csv 
 ##  - Top N taxa per function: 10</code></pre>
 </div>
 <div id="define-paths" class="section level2" number="3.2">
@@ -5358,12 +5363,12 @@ compressed.</p>
 <span id="cb6-74"><a href="#cb6-74" tabindex="-1"></a>  <span class="st">&quot;- KEGG analysis output:&quot;</span>, <span class="fu">here</span>(output_root_folder, <span class="st">&quot;KEGG&quot;</span>), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span></span>
 <span id="cb6-75"><a href="#cb6-75" tabindex="-1"></a>)</span></code></pre></div>
 <pre><code>## Path Configuration:
-##  - Step 1 BIOM input: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/1_prepare_picrust2_inputs/study_seqs.biom 
-##  - Step 2 prediction folder: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/2_picrust2_pipeline/picrust2_out_pipeline 
-##  - Stratified contribution output: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline 
-##  - Metadata input: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/data/metadata.tsv 
-##  - MetaCyc analysis output: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc 
-##  - KEGG analysis output: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG</code></pre>
+##  - Step 1 BIOM input: PROJECT_ROOT/results/1_prepare_picrust2_inputs/study_seqs.biom 
+##  - Step 2 prediction folder: PROJECT_ROOT/results/2_picrust2_pipeline/picrust2_out_pipeline 
+##  - Stratified contribution output: PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline 
+##  - Metadata input: PROJECT_ROOT/data/metadata.tsv 
+##  - MetaCyc analysis output: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc 
+##  - KEGG analysis output: PROJECT_ROOT/results/5_taxon_contribution/KEGG</code></pre>
 <hr />
 </div>
 </div>
@@ -5630,17 +5635,17 @@ mixed.</p>
 ## 2   EC metagenome contribution Reused existing verified output
 ## 3 MetaCyc pathway contribution Reused existing verified output
 ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            Command
-## 1 &#39;/usr/bin/env&#39; -u R_HOME -u R_LIBS -u R_LIBS_USER -u R_LIBS_SITE -u R_ENVIRON -u R_ENVIRON_USER -u R_PROFILE -u R_PROFILE_USER &#39;/opt/homebrew/bin/conda&#39; run -p /opt/anaconda3/envs/picrust2 --no-capture-output metagenome_pipeline.py -i /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/1_prepare_picrust2_inputs/study_seqs.biom -f /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_KO_predicted.tsv -m /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_marker_predicted_and_nsti.tsv --max_nsti 2 --min_reads 1 --min_samples 1 -o /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out --strat_out
-## 2 &#39;/usr/bin/env&#39; -u R_HOME -u R_LIBS -u R_LIBS_USER -u R_LIBS_SITE -u R_ENVIRON -u R_ENVIRON_USER -u R_PROFILE -u R_PROFILE_USER &#39;/opt/homebrew/bin/conda&#39; run -p /opt/anaconda3/envs/picrust2 --no-capture-output metagenome_pipeline.py -i /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/1_prepare_picrust2_inputs/study_seqs.biom -f /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_EC_predicted.tsv -m /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_marker_predicted_and_nsti.tsv --max_nsti 2 --min_reads 1 --min_samples 1 -o /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out --strat_out
-## 3                                                                                                                                                                                                                                                                                                                                   &#39;/usr/bin/env&#39; -u R_HOME -u R_LIBS -u R_LIBS_USER -u R_LIBS_SITE -u R_ENVIRON -u R_ENVIRON_USER -u R_PROFILE -u R_PROFILE_USER &#39;/opt/homebrew/bin/conda&#39; run -p /opt/anaconda3/envs/picrust2 --no-capture-output pathway_pipeline.py -i /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/pred_metagenome_contrib.tsv.gz -o /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/pathways_out --processes 1
+## 1 &#39;/usr/bin/env&#39; -u R_HOME -u R_LIBS -u R_LIBS_USER -u R_LIBS_SITE -u R_ENVIRON -u R_ENVIRON_USER -u R_PROFILE -u R_PROFILE_USER &#39;/opt/homebrew/bin/conda&#39; run -p PICRUST2_ENV --no-capture-output metagenome_pipeline.py -i PROJECT_ROOT/results/1_prepare_picrust2_inputs/study_seqs.biom -f PROJECT_ROOT/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_KO_predicted.tsv -m PROJECT_ROOT/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_marker_predicted_and_nsti.tsv --max_nsti 2 --min_reads 1 --min_samples 1 -o PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out --strat_out
+## 2 &#39;/usr/bin/env&#39; -u R_HOME -u R_LIBS -u R_LIBS_USER -u R_LIBS_SITE -u R_ENVIRON -u R_ENVIRON_USER -u R_PROFILE -u R_PROFILE_USER &#39;/opt/homebrew/bin/conda&#39; run -p PICRUST2_ENV --no-capture-output metagenome_pipeline.py -i PROJECT_ROOT/results/1_prepare_picrust2_inputs/study_seqs.biom -f PROJECT_ROOT/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_EC_predicted.tsv -m PROJECT_ROOT/results/2_picrust2_pipeline/picrust2_out_pipeline/combined_marker_predicted_and_nsti.tsv --max_nsti 2 --min_reads 1 --min_samples 1 -o PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out --strat_out
+## 3                                                                                                                                                                                                                                                                                                                                   &#39;/usr/bin/env&#39; -u R_HOME -u R_LIBS -u R_LIBS_USER -u R_LIBS_SITE -u R_ENVIRON -u R_ENVIRON_USER -u R_PROFILE -u R_PROFILE_USER &#39;/opt/homebrew/bin/conda&#39; run -p PICRUST2_ENV --no-capture-output pathway_pipeline.py -i PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/pred_metagenome_contrib.tsv.gz -o PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/pathways_out --processes 1
 ##   Exit Code Verified Output Duration (minutes)
 ## 1        NA            TRUE                 NA
 ## 2        NA            TRUE                 NA
 ## 3        NA            TRUE                 NA
 ##                                                                                                                                                                    Output File
-## 1 /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_contrib.tsv.gz
-## 2 /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/pred_metagenome_contrib.tsv.gz
-## 3            /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz
+## 1 PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_contrib.tsv.gz
+## 2 PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/pred_metagenome_contrib.tsv.gz
+## 3            PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz
 ##   PICRUSt2 Version
 ## 1   PICRUSt2 2.6.3
 ## 2   PICRUSt2 2.6.3
@@ -5653,14 +5658,14 @@ mixed.</p>
 <span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>  )</span>
 <span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a>)</span></code></pre></div>
 <ul>
-<li><a href="../../results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_contrib.tsv.gz">KO
+<li><span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">KO
 contribution table:
-results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_contrib.tsv.gz</a></li>
-<li><a href="../../results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz">MetaCyc
+results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_contrib.tsv.gz</span></li>
+<li><span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">MetaCyc
 contribution table:
-results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz</a></li>
-<li><a href="../../results/5_taxon_contribution/stratified_pipeline/logs">Contribution-generation
-logs: results/5_taxon_contribution/stratified_pipeline/logs</a></li>
+results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz</span></li>
+<li><span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">Contribution-generation
+logs: results/5_taxon_contribution/stratified_pipeline/logs</span></li>
 </ul>
 <div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="fu">dir.create</span>(plots_folder, <span class="at">recursive =</span> <span class="cn">TRUE</span>, <span class="at">showWarnings =</span> <span class="cn">FALSE</span>)</span>
 <span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="co"># Delete only plot filenames owned by this step; tables and external inputs are</span></span>
@@ -5760,7 +5765,7 @@ filtered stream into <code>data.table::fread()</code>.</p>
 <span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Streaming pre-filter (this reads the full source file once, but never &quot;</span>,</span>
 <span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>    <span class="st">&quot;loads it into memory all at once):</span><span class="sc">\n</span><span class="st"> &quot;</span>, awk_filter_command, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <pre><code>## Streaming pre-filter (this reads the full source file once, but never  loads it into memory all at once):
-##   &#39;/usr/bin/gzip&#39; -cd &#39;/Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz&#39; | &#39;/usr/bin/awk&#39; -F&#39;\t&#39; -v requested_ids=&#39;PWY0-1586,PWY-8178,PWY-1042,NONOXIPENT-PWY,PWY-7357,CALVIN-PWY,PWY-7790,PWY-5686,PWY-7791,PWY-6385&#39; &#39;BEGIN{n=split(requested_ids, requested, &quot;,&quot;); for(i=1; i&lt;=n; i++) ids[requested[i]]=1} NR==1 || ($2 in ids)&#39;</code></pre>
+##   &#39;/usr/bin/gzip&#39; -cd &#39;PROJECT_ROOT/results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz&#39; | &#39;/usr/bin/awk&#39; -F&#39;\t&#39; -v requested_ids=&#39;PWY0-1586,PWY-8178,PWY-1042,NONOXIPENT-PWY,PWY-7357,CALVIN-PWY,PWY-7790,PWY-5686,PWY-7791,PWY-6385&#39; &#39;BEGIN{n=split(requested_ids, requested, &quot;,&quot;); for(i=1; i&lt;=n; i++) ids[requested[i]]=1} NR==1 || ($2 in ids)&#39;</code></pre>
 <div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a><span class="co"># fread() receives only the selected rows from the pipe, limiting R memory use</span></span>
 <span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a><span class="co"># even when the complete stratified table is many gigabytes.</span></span>
 <span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a>contrib_filtered_raw <span class="ot">&lt;-</span> <span class="fu">fread</span>(<span class="at">cmd =</span> awk_filter_command, <span class="at">sep =</span> <span class="st">&quot;</span><span class="sc">\t</span><span class="st">&quot;</span>, <span class="at">header =</span> <span class="cn">TRUE</span>)</span>
@@ -6115,12 +6120,12 @@ hierarchically clustered.</p>
 <span id="cb33-55"><a href="#cb33-55" tabindex="-1"></a>                 <span class="st">&quot;condition-split taxon contribution heatmap&quot;</span>)</span>
 <span id="cb33-56"><a href="#cb33-56" tabindex="-1"></a>)</span></code></pre></div>
 <ul>
-<li><a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus.html">Interactive
+<li><span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">Interactive
 Genus condition-split taxon contribution heatmap:
-results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus.html</a></li>
-<li><a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum.html">Interactive
+results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus.html</span></li>
+<li><span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">Interactive
 Phylum condition-split taxon contribution heatmap:
-results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum.html</a></li>
+results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum.html</span></li>
 </ul>
 <div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" tabindex="-1"></a>htmltools<span class="sc">::</span><span class="fu">tagList</span>(native_heatmap_widgets)</span></code></pre></div>
 <div class="plotly html-widget html-fill-item" id="htmlwidget-c4b8762caaeb44b38911" style="width:100%;height:400px;"></div>
@@ -6145,32 +6150,32 @@ condition-wise summary.</p>
 <span id="cb35-7"><a href="#cb35-7" tabindex="-1"></a><span class="fu">add_sheet_to_excel</span>(output_excel_path, <span class="st">&quot;PICRUSt2_Contribution_Run&quot;</span>,</span>
 <span id="cb35-8"><a href="#cb35-8" tabindex="-1"></a>                   <span class="fu">as.data.frame</span>(contribution_run_summary),</span>
 <span id="cb35-9"><a href="#cb35-9" tabindex="-1"></a>                   <span class="at">rownames =</span> <span class="cn">FALSE</span>, <span class="at">overwrite =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
-<pre><code>## Sheet PICRUSt2_Contribution_Run added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet PICRUSt2_Contribution_Run added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb37"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" tabindex="-1"></a><span class="co"># Sheet 2: Metadata (documentation of the exact sample set analyzed)</span></span>
 <span id="cb37-2"><a href="#cb37-2" tabindex="-1"></a><span class="fu">add_sheet_to_excel</span>(output_excel_path, <span class="st">&quot;Metadata&quot;</span>, <span class="fu">as.data.frame</span>(sample_metadata),</span>
 <span id="cb37-3"><a href="#cb37-3" tabindex="-1"></a>                   <span class="at">rownames =</span> <span class="cn">FALSE</span>, <span class="at">overwrite =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
-<pre><code>## Sheet Metadata added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Metadata added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a><span class="co"># Sheet 3: Selected pathway identifiers and human-readable names</span></span>
 <span id="cb39-2"><a href="#cb39-2" tabindex="-1"></a><span class="fu">add_sheet_to_excel</span>(output_excel_path, <span class="st">&quot;Pathway_Reference&quot;</span>,</span>
 <span id="cb39-3"><a href="#cb39-3" tabindex="-1"></a>                   <span class="fu">as.data.frame</span>(pathway_lookup), <span class="at">rownames =</span> <span class="cn">FALSE</span>, <span class="at">overwrite =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
-<pre><code>## Sheet Pathway_Reference added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Pathway_Reference added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb41"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" tabindex="-1"></a><span class="co"># Sheet 4: Per-sample aggregated taxon contributions (the finest-grained export)</span></span>
 <span id="cb41-2"><a href="#cb41-2" tabindex="-1"></a><span class="fu">add_sheet_to_excel</span>(output_excel_path, <span class="st">&quot;Taxon_Contributions_per_Sample&quot;</span>,</span>
 <span id="cb41-3"><a href="#cb41-3" tabindex="-1"></a>                    <span class="fu">as.data.frame</span>(contrib_with_group), <span class="at">rownames =</span> <span class="cn">FALSE</span>, <span class="at">overwrite =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
-<pre><code>## Sheet Taxon_Contributions_per_Sample added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Taxon_Contributions_per_Sample added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="co"># Sheet 5: Condition-wise mean/SD contribution summary</span></span>
 <span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a><span class="fu">add_sheet_to_excel</span>(output_excel_path, <span class="st">&quot;Contribution_by_Condition&quot;</span>,</span>
 <span id="cb43-3"><a href="#cb43-3" tabindex="-1"></a>                    <span class="fu">as.data.frame</span>(group_contribution_summary), <span class="at">rownames =</span> <span class="cn">FALSE</span>, <span class="at">overwrite =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
-<pre><code>## Sheet Contribution_by_Condition added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Contribution_by_Condition added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Results exported to:</span><span class="sc">\n</span><span class="st">&quot;</span>, output_excel_path, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <pre><code>## Results exported to:
-##  /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+##  PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div id="column-dictionary" class="section level2" number="9.1">
 <h2><span class="header-section-number">9.1</span> Document and Export
 Column Dictionary</h2>
 <p>This chunk documents every column of the five exported data sheets in
 a trailing <code>Column_Dictionary</code> sheet, using the project’s
-shared <a href="../functions/build_column_dictionary_function.R">build_column_dictionary_function.R</a>
+shared <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/functions/build_column_dictionary_function.R">build_column_dictionary_function.R</a>
 helper — this project’s standard convention of shipping a data
 dictionary alongside every exported workbook.</p>
 <div class="sourceCode" id="cb47"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" tabindex="-1"></a><span class="co"># Metadata fields are user-supplied; describe them generically without assuming</span></span>
@@ -6249,13 +6254,13 @@ dictionary alongside every exported workbook.</p>
 <span id="cb47-74"><a href="#cb47-74" tabindex="-1"></a></span>
 <span id="cb47-75"><a href="#cb47-75" tabindex="-1"></a><span class="fu">add_sheet_to_excel</span>(output_excel_path, <span class="st">&quot;Column_Dictionary&quot;</span>, column_dictionary,</span>
 <span id="cb47-76"><a href="#cb47-76" tabindex="-1"></a>                   <span class="at">rownames =</span> <span class="cn">FALSE</span>, <span class="at">overwrite =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
-<pre><code>## Sheet Column_Dictionary added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Column_Dictionary added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb49"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb49-1"><a href="#cb49-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Column_Dictionary sheet added. Workbook complete at:</span><span class="sc">\n</span><span class="st">&quot;</span>, output_excel_path, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <pre><code>## Column_Dictionary sheet added. Workbook complete at:
-##  /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
+##  PROJECT_ROOT/results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb51"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb51-1"><a href="#cb51-1" tabindex="-1"></a><span class="fu">render_output_links</span>(output_excel_path, <span class="at">labels =</span> <span class="st">&quot;MetaCyc taxon contribution workbook (Excel)&quot;</span>)</span></code></pre></div>
 <ul>
-<li><a href="../../results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx">MetaCyc
+<li><a href="../5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx">MetaCyc
 taxon contribution workbook (Excel):
 results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx</a></li>
 </ul>
@@ -6298,12 +6303,12 @@ independently under <code>results/5_taxon_contribution/KEGG/</code>.</p>
 ## ℹ Row 439 of `y` matches multiple rows in `x`.
 ## ℹ If a many-to-many relationship is expected, set `relationship =
 ##   &quot;many-to-many&quot;` to silence this warning.</code></pre>
-<pre><code>## Sheet PICRUSt2_Contribution_Run added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
-<pre><code>## Sheet Metadata added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
-<pre><code>## Sheet Pathway_KO_Mapping added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
-<pre><code>## Sheet Taxon_Contributions_per_Sample added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
-<pre><code>## Sheet Contribution_by_Condition added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
-<pre><code>## Sheet Column_Dictionary added successfully to the workbook: /Users/amro/Documents/workflows/PICRUSt2_16S_Functional_Inference_Workflow/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet PICRUSt2_Contribution_Run added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Metadata added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Pathway_KO_Mapping added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Taxon_Contributions_per_Sample added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Contribution_by_Condition added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
+<pre><code>## Sheet Column_Dictionary added successfully to the workbook: PROJECT_ROOT/results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx</code></pre>
 <div class="sourceCode" id="cb60"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb60-1"><a href="#cb60-1" tabindex="-1"></a><span class="co"># Report stable IDs/names first, then link and embed every generated artifact.</span></span>
 <span id="cb60-2"><a href="#cb60-2" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;KEGG pathways analyzed:</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <pre><code>## KEGG pathways analyzed:</code></pre>
@@ -6343,162 +6348,162 @@ independently under <code>results/5_taxon_contribution/KEGG/</code>.</p>
 <h1><span class="header-section-number">11</span> Output File
 Summary</h1>
 <p>The tree below lists every file this notebook has written to its own
-output folder, <a href="../../results/5_taxon_contribution/">results/5_taxon_contribution/</a>,
+output folder, <a href="../5_taxon_contribution/">results/5_taxon_contribution/</a>,
 as a clickable, portable link (relative to this notebook’s own location)
 with a short description – built live from what is actually on disk at
-knit time via the project’s shared <a href="../functions/render_output_tree_function.R">render_output_tree_function.R</a>
+knit time via the project’s shared <a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/functions/render_output_tree_function.R">render_output_tree_function.R</a>
 helper, so it always matches this run’s real output rather than a
 hand-maintained list.</p>
 <pre>
 results/5_taxon_contribution/
-├── <a href="../../results/5_taxon_contribution/KEGG/">KEGG/</a>                 # KEGG pathway taxon contribution workbook and plots
-│   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/">plots/</a>
-│   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/">taxon_contribution_heatmap_kegg_genus_files/</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/">crosstalk-1.2.2/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/css/">css/</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/css/crosstalk.min.css">crosstalk.min.css</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/js/">js/</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/js/crosstalk.js">crosstalk.js</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/js/crosstalk.js.map">crosstalk.js.map</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/js/crosstalk.min.js">crosstalk.min.js</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/js/crosstalk.min.js.map">crosstalk.min.js.map</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/scss/">scss/</a>
-│   │   │   │       └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/crosstalk-1.2.2/scss/crosstalk.scss">crosstalk.scss</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/htmltools-fill-0.5.9/">htmltools-fill-0.5.9/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/htmltools-fill-0.5.9/fill.css">fill.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/htmlwidgets-1.6.4/">htmlwidgets-1.6.4/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/htmlwidgets-1.6.4/htmlwidgets.js">htmlwidgets.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/jquery-3.5.1/">jquery-3.5.1/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/jquery-3.5.1/jquery-AUTHORS.txt">jquery-AUTHORS.txt</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/jquery-3.5.1/jquery.js">jquery.js</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/jquery-3.5.1/jquery.min.js">jquery.min.js</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/jquery-3.5.1/jquery.min.map">jquery.min.map</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-binding-4.12.0/">plotly-binding-4.12.0/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-binding-4.12.0/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-binding-4.12.1/">plotly-binding-4.12.1/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-binding-4.12.1/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-htmlwidgets-css-2.25.2/">plotly-htmlwidgets-css-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css">plotly-htmlwidgets.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-main-2.25.2/">plotly-main-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/plotly-main-2.25.2/plotly-latest.min.js">plotly-latest.min.js</a>
-│   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/typedarray-0.1/">typedarray-0.1/</a>
-│   │   │       └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus_files/typedarray-0.1/typedarray.min.js">typedarray.min.js</a>
-│   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_genus.html">taxon_contribution_heatmap_kegg_genus.html</a>
-│   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/">taxon_contribution_heatmap_kegg_phylum_files/</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/">crosstalk-1.2.2/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/css/">css/</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/css/crosstalk.min.css">crosstalk.min.css</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/js/">js/</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/js/crosstalk.js">crosstalk.js</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/js/crosstalk.js.map">crosstalk.js.map</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/js/crosstalk.min.js">crosstalk.min.js</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/js/crosstalk.min.js.map">crosstalk.min.js.map</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/scss/">scss/</a>
-│   │   │   │       └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/crosstalk-1.2.2/scss/crosstalk.scss">crosstalk.scss</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/htmltools-fill-0.5.9/">htmltools-fill-0.5.9/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/htmltools-fill-0.5.9/fill.css">fill.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/htmlwidgets-1.6.4/">htmlwidgets-1.6.4/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/htmlwidgets-1.6.4/htmlwidgets.js">htmlwidgets.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/jquery-3.5.1/">jquery-3.5.1/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/jquery-3.5.1/jquery-AUTHORS.txt">jquery-AUTHORS.txt</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/jquery-3.5.1/jquery.js">jquery.js</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/jquery-3.5.1/jquery.min.js">jquery.min.js</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/jquery-3.5.1/jquery.min.map">jquery.min.map</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-binding-4.12.0/">plotly-binding-4.12.0/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-binding-4.12.0/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-binding-4.12.1/">plotly-binding-4.12.1/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-binding-4.12.1/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-htmlwidgets-css-2.25.2/">plotly-htmlwidgets-css-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css">plotly-htmlwidgets.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-main-2.25.2/">plotly-main-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/plotly-main-2.25.2/plotly-latest.min.js">plotly-latest.min.js</a>
-│   │   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/typedarray-0.1/">typedarray-0.1/</a>
-│   │   │       └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum_files/typedarray-0.1/typedarray.min.js">typedarray.min.js</a>
-│   │   └── <a href="../../results/5_taxon_contribution/KEGG/plots/taxon_contribution_heatmap_kegg_phylum.html">taxon_contribution_heatmap_kegg_phylum.html</a>
-│   └── <a href="../../results/5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx">taxon_contribution_summary.xlsx</a>
-├── <a href="../../results/5_taxon_contribution/MetaCyc/">MetaCyc/</a>              # MetaCyc pathway taxon contribution workbook and plots
-│   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/">plots/</a>
-│   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/">taxon_contribution_heatmap_metacyc_genus_files/</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/">crosstalk-1.2.2/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/css/">css/</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/css/crosstalk.min.css">crosstalk.min.css</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/js/">js/</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/js/crosstalk.js">crosstalk.js</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/js/crosstalk.js.map">crosstalk.js.map</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/js/crosstalk.min.js">crosstalk.min.js</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/js/crosstalk.min.js.map">crosstalk.min.js.map</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/scss/">scss/</a>
-│   │   │   │       └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/crosstalk-1.2.2/scss/crosstalk.scss">crosstalk.scss</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/htmltools-fill-0.5.9/">htmltools-fill-0.5.9/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/htmltools-fill-0.5.9/fill.css">fill.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/htmlwidgets-1.6.4/">htmlwidgets-1.6.4/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/htmlwidgets-1.6.4/htmlwidgets.js">htmlwidgets.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/jquery-3.5.1/">jquery-3.5.1/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/jquery-3.5.1/jquery-AUTHORS.txt">jquery-AUTHORS.txt</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/jquery-3.5.1/jquery.js">jquery.js</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/jquery-3.5.1/jquery.min.js">jquery.min.js</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/jquery-3.5.1/jquery.min.map">jquery.min.map</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-binding-4.12.0/">plotly-binding-4.12.0/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-binding-4.12.0/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-binding-4.12.1/">plotly-binding-4.12.1/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-binding-4.12.1/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-htmlwidgets-css-2.25.2/">plotly-htmlwidgets-css-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css">plotly-htmlwidgets.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-main-2.25.2/">plotly-main-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/plotly-main-2.25.2/plotly-latest.min.js">plotly-latest.min.js</a>
-│   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/typedarray-0.1/">typedarray-0.1/</a>
-│   │   │       └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus_files/typedarray-0.1/typedarray.min.js">typedarray.min.js</a>
-│   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_genus.html">taxon_contribution_heatmap_metacyc_genus.html</a>
-│   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/">taxon_contribution_heatmap_metacyc_phylum_files/</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/">crosstalk-1.2.2/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/css/">css/</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/css/crosstalk.min.css">crosstalk.min.css</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/js/">js/</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/js/crosstalk.js">crosstalk.js</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/js/crosstalk.js.map">crosstalk.js.map</a>
-│   │   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/js/crosstalk.min.js">crosstalk.min.js</a>
-│   │   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/js/crosstalk.min.js.map">crosstalk.min.js.map</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/scss/">scss/</a>
-│   │   │   │       └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/crosstalk-1.2.2/scss/crosstalk.scss">crosstalk.scss</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/htmltools-fill-0.5.9/">htmltools-fill-0.5.9/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/htmltools-fill-0.5.9/fill.css">fill.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/htmlwidgets-1.6.4/">htmlwidgets-1.6.4/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/htmlwidgets-1.6.4/htmlwidgets.js">htmlwidgets.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/jquery-3.5.1/">jquery-3.5.1/</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/jquery-3.5.1/jquery-AUTHORS.txt">jquery-AUTHORS.txt</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/jquery-3.5.1/jquery.js">jquery.js</a>
-│   │   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/jquery-3.5.1/jquery.min.js">jquery.min.js</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/jquery-3.5.1/jquery.min.map">jquery.min.map</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-binding-4.12.0/">plotly-binding-4.12.0/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-binding-4.12.0/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-binding-4.12.1/">plotly-binding-4.12.1/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-binding-4.12.1/plotly.js">plotly.js</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-htmlwidgets-css-2.25.2/">plotly-htmlwidgets-css-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css">plotly-htmlwidgets.css</a>
-│   │   │   ├── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-main-2.25.2/">plotly-main-2.25.2/</a>
-│   │   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/plotly-main-2.25.2/plotly-latest.min.js">plotly-latest.min.js</a>
-│   │   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/typedarray-0.1/">typedarray-0.1/</a>
-│   │   │       └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum_files/typedarray-0.1/typedarray.min.js">typedarray.min.js</a>
-│   │   └── <a href="../../results/5_taxon_contribution/MetaCyc/plots/taxon_contribution_heatmap_metacyc_phylum.html">taxon_contribution_heatmap_metacyc_phylum.html</a>
-│   └── <a href="../../results/5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx">taxon_contribution_summary.xlsx</a>
-└── <a href="../../results/5_taxon_contribution/stratified_pipeline/">stratified_pipeline/</a>  # PICRUSt2 KO, EC, and MetaCyc contribution tables and logs
-    ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/">EC_metagenome_out/</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/pred_metagenome_contrib.tsv.gz">pred_metagenome_contrib.tsv.gz</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/pred_metagenome_unstrat.tsv.gz">pred_metagenome_unstrat.tsv.gz</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/seqtab_norm.tsv.gz">seqtab_norm.tsv.gz</a>
-    │   └── <a href="../../results/5_taxon_contribution/stratified_pipeline/EC_metagenome_out/weighted_nsti.tsv.gz">weighted_nsti.tsv.gz</a>
-    ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/">KO_metagenome_out/</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_contrib.tsv.gz">pred_metagenome_contrib.tsv.gz</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv.gz">pred_metagenome_unstrat.tsv.gz</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/seqtab_norm.tsv.gz">seqtab_norm.tsv.gz</a>
-    │   └── <a href="../../results/5_taxon_contribution/stratified_pipeline/KO_metagenome_out/weighted_nsti.tsv.gz">weighted_nsti.tsv.gz</a>
-    ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/logs/">logs/</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/logs/ec_metagenome_contribution.log">ec_metagenome_contribution.log</a>
-    │   ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/logs/ko_metagenome_contribution.log">ko_metagenome_contribution.log</a>
-    │   └── <a href="../../results/5_taxon_contribution/stratified_pipeline/logs/metacyc_pathway_contribution.log">metacyc_pathway_contribution.log</a>
-    └── <a href="../../results/5_taxon_contribution/stratified_pipeline/pathways_out/">pathways_out/</a>
-        ├── <a href="../../results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_contrib.tsv.gz">path_abun_contrib.tsv.gz</a>
-        └── <a href="../../results/5_taxon_contribution/stratified_pipeline/pathways_out/path_abun_unstrat.tsv.gz">path_abun_unstrat.tsv.gz</a>
+├── <a href="../5_taxon_contribution/KEGG/">KEGG/</a>                 # KEGG pathway taxon contribution workbook and plots
+│   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plots/</span>
+│   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_kegg_genus_files/</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk-1.2.2/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">css/</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.css</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">js/</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js.map</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js.map</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">scss/</span>
+│   │   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.scss</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmltools-fill-0.5.9/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">fill.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets-1.6.4/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-3.5.1/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-AUTHORS.txt</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.js</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.js</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.map</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.0/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.1/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets-css-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-main-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-latest.min.js</span>
+│   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray-0.1/</span>
+│   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray.min.js</span>
+│   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_kegg_genus.html</span>
+│   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_kegg_phylum_files/</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk-1.2.2/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">css/</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.css</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">js/</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js.map</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js.map</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">scss/</span>
+│   │   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.scss</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmltools-fill-0.5.9/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">fill.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets-1.6.4/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-3.5.1/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-AUTHORS.txt</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.js</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.js</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.map</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.0/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.1/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets-css-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-main-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-latest.min.js</span>
+│   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray-0.1/</span>
+│   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray.min.js</span>
+│   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_kegg_phylum.html</span>
+│   └── <a href="../5_taxon_contribution/KEGG/taxon_contribution_summary.xlsx">taxon_contribution_summary.xlsx</a>
+├── <a href="../5_taxon_contribution/MetaCyc/">MetaCyc/</a>              # MetaCyc pathway taxon contribution workbook and plots
+│   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plots/</span>
+│   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_metacyc_genus_files/</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk-1.2.2/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">css/</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.css</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">js/</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js.map</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js.map</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">scss/</span>
+│   │   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.scss</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmltools-fill-0.5.9/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">fill.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets-1.6.4/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-3.5.1/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-AUTHORS.txt</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.js</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.js</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.map</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.0/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.1/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets-css-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-main-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-latest.min.js</span>
+│   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray-0.1/</span>
+│   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray.min.js</span>
+│   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_metacyc_genus.html</span>
+│   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_metacyc_phylum_files/</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk-1.2.2/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">css/</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.css</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">js/</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.js.map</span>
+│   │   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js</span>
+│   │   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.min.js.map</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">scss/</span>
+│   │   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">crosstalk.scss</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmltools-fill-0.5.9/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">fill.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets-1.6.4/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">htmlwidgets.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-3.5.1/</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery-AUTHORS.txt</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.js</span>
+│   │   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.js</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">jquery.min.map</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.0/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-binding-4.12.1/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly.js</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets-css-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-htmlwidgets.css</span>
+│   │   │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-main-2.25.2/</span>
+│   │   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">plotly-latest.min.js</span>
+│   │   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray-0.1/</span>
+│   │   │       └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">typedarray.min.js</span>
+│   │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">taxon_contribution_heatmap_metacyc_phylum.html</span>
+│   └── <a href="../5_taxon_contribution/MetaCyc/taxon_contribution_summary.xlsx">taxon_contribution_summary.xlsx</a>
+└── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">stratified_pipeline/</span>  # PICRUSt2 KO, EC, and MetaCyc contribution tables and logs
+    ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">EC_metagenome_out/</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">pred_metagenome_contrib.tsv.gz</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">pred_metagenome_unstrat.tsv.gz</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">seqtab_norm.tsv.gz</span>
+    │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">weighted_nsti.tsv.gz</span>
+    ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">KO_metagenome_out/</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">pred_metagenome_contrib.tsv.gz</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">pred_metagenome_unstrat.tsv.gz</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">seqtab_norm.tsv.gz</span>
+    │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">weighted_nsti.tsv.gz</span>
+    ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">logs/</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">ec_metagenome_contribution.log</span>
+    │   ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">ko_metagenome_contribution.log</span>
+    │   └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">metacyc_pathway_contribution.log</span>
+    └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">pathways_out/</span>
+        ├── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">path_abun_contrib.tsv.gz</span>
+        └── <span class="reference-omitted" title="Generated by a complete local example run; intentionally omitted from the compact reference results.">path_abun_unstrat.tsv.gz</span>
 </pre>
 <hr />
 </div>
@@ -6614,10 +6619,10 @@ pre-filter of the multi-gigabyte stratified contribution files.</li>
 <div id="related" class="section level2" number="15.2">
 <h2><span class="header-section-number">15.2</span> Related</h2>
 <ul>
-<li><a href="2_picrust2_pipeline.md">Step 2 — PICRUSt2 Pipeline</a> —
+<li><a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/2_picrust2_pipeline.md">Step 2 — PICRUSt2 Pipeline</a> —
 produces the community-level marker, KO, and EC prediction tables reused
 here.</li>
-<li><a href="3_nsti_quality_assessment.md">Step 3 — NSTI Quality
+<li><a href="https://github.com/changlabs/PICRUSt2_16S_Functional_Inference_Workflow/blob/main/R/notebooks/3_nsti_quality_assessment.md">Step 3 — NSTI Quality
 Assessment</a> — assesses the prediction reliability that should
 accompany interpretation of the taxon contribution results.</li>
 </ul>

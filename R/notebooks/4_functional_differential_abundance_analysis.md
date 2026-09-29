@@ -486,9 +486,10 @@ from output that is still gzip-compressed, so the error message points
 at the real fix.
 
 ``` r
-# Base folders
-results_folder <- here("results")
-data_folder    <- here("data")
+# Base folders. The example runner overrides both so its test data and outputs
+# remain isolated from normal study data and results.
+results_folder <- here(Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"))
+data_folder    <- here(Sys.getenv("PICRUST2_DATA_DIR", unset = "data"))
 
 # Step 2's output (this notebook's input)
 step2_output_folder <- here(results_folder, "2_picrust2_pipeline")

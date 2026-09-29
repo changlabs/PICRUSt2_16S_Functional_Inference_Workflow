@@ -61,7 +61,7 @@ Step 2: Run the PICRUSt2 Functional Prediction Pipeline
 
 This notebook is **Step 2** of the PICRUSt2 workflow. It runs the
 [PICRUSt2](https://github.com/picrust/picrust2/wiki) functional
-prediction pipeline on the [BIOM](http://biom-format.org/)-format
+prediction pipeline on the [BIOM](https://biom-format.org/)-format
 feature table and FASTA representative sequences prepared in Step 1,
 producing community-level (per-sample) predicted gene family and pathway
 abundances for the study community.
@@ -96,7 +96,7 @@ PICRUSt2 combines several independent tools into a single pipeline:
 
 1.  **Sequence placement** — Each ASV is phylogenetically placed into a
     reference tree of genomes with known gene content, using
-    [EPA-NG](http://github.com/pierrebarbera/epa-ng) by default (or
+    [EPA-NG](https://github.com/pierrebarbera/epa-ng) by default (or
     [SEPP](https://github.com/smirarab/sepp) as an alternative), with
     tree manipulation handled by
     [gappa](https://github.com/lczech/gappa).
@@ -471,8 +471,9 @@ paths are relative to the project root, making the script portable
 across different systems.
 
 ``` r
-# Base results folder for all pipeline outputs
-results_folder <- here("results")
+# Base results folder for all pipeline outputs. The example runner overrides it
+# so testing never reads from or writes to the normal results/ tree.
+results_folder <- here(Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"))
 
 # Folder containing Step 1's outputs (this step's inputs)
 step1_output_folder <- here(results_folder, "1_prepare_picrust2_inputs")

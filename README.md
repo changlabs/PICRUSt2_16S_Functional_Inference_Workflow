@@ -12,6 +12,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
 
 - [Key Features](#key-features)
 - [Pipeline Overview](#pipeline-overview)
+- [Bundled Example Dataset](#bundled-example-dataset)
 - [Setup](#setup)
   - [1. Clone the Repository](#1-clone-the-repository)
   - [2. Open the R Project in RStudio](#2-open-the-r-project-in-rstudio)
@@ -88,7 +89,25 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
              contribution reports
 ```
 
-[Steps 1](1_prepare_picrust2_inputs.md) and [2](2_picrust2_pipeline.md) are required to generate the functional predictions. [Step 3](3_nsti_quality_assessment.md) is a recommended quality-assessment checkpoint before biological interpretation. [Step 4](4_functional_differential_abundance_analysis.md) performs the workflow's inferential analysis. [Step 5](5_taxon_contribution.md) is optional and generates its own stratified PICRUSt2 run to explain which taxa contribute to selected pathway predictions.
+[Steps 1](R/notebooks/1_prepare_picrust2_inputs.md) and [2](R/notebooks/2_picrust2_pipeline.md) are required to generate the functional predictions. [Step 3](R/notebooks/3_nsti_quality_assessment.md) is a recommended quality-assessment checkpoint before biological interpretation. [Step 4](R/notebooks/4_functional_differential_abundance_analysis.md) performs the workflow's inferential analysis. [Step 5](R/notebooks/5_taxon_contribution.md) is optional for normal studies and generates its own stratified PICRUSt2 run to explain which taxa contribute to selected pathway predictions. The bundled example runs all five steps.
+
+------------------------------------------------------------------------
+
+## Bundled Example Dataset
+
+The repository includes an isolated, clone-ready example under [`example/data/`](example/data/). It contains 10 samples, 1,468 representative 16S ASVs, a sample-by-ASV count table, metadata in the workflow's normal TSV layout, and a DADA2-compatible taxonomy table. The `Control`/`Treatment` design and all taxonomy labels are synthetic demonstration annotations intended only to exercise the workflow. They are not suitable for biological interpretation.
+
+Run the complete example from the repository root:
+
+``` bash
+Rscript example/run_example.R
+```
+
+The runner executes **all five steps**, including NSTI assessment, both MetaCyc and KEGG differential-abundance analyses, and both taxon-contribution branches. It reads only [`example/data/`](example/data/) and writes only to the ignored `example/run_results/` directory, so it cannot mix with files placed in the normal `data/` directory or overwrite normal `results/`.
+
+To inspect the example without installing PICRUSt2 or running the workflow, browse the committed reports under [`example/reference_results/reports/`](example/reference_results/reports/), the compact result files under [`example/reference_results/`](example/reference_results/), or the GitHub Pages site.
+
+The abundance and sequence tables were derived from human stool samples generated in our laboratory, then randomly reduced and anonymized for demonstration purposes. The analysis methods should be cited using the PICRUSt2 and ggpicrust2 papers listed under [References](#references).
 
 ------------------------------------------------------------------------
 
@@ -139,13 +158,13 @@ Copy the following study files into `data/`:
 | `metadata.tsv` | Steps 3–5 | `SampleID`, `Condition`, and `Reference` |
 | `asv_taxonomy.csv` | Step 5 | `ASV_ID` plus standard taxonomic-rank columns |
 
-These files are not included in the repository and are ignored by Git. See [data/README.md](data/README.md) for the complete schemas and consistency requirements.
+Normal study files are not included in the repository and are ignored by Git. The bundled example lives separately under `example/data/`. See [data/README.md](data/README.md) for the complete schemas and consistency requirements.
 
 ------------------------------------------------------------------------
 
 ## Running the Pipeline
 
-Run the numbered notebooks in order from the project root. In RStudio, use **Knit** with the HTML output to execute the analysis and create a complete interactive report. Select **Knit to github_document** when you want to refresh the repository Markdown without executing the analysis. No separate document-rendering script is required.
+Run the numbered notebooks in order from the project root. In RStudio, use **Knit** with the HTML output to execute the analysis and create a complete interactive report. Select **Knit to github_document** when you want to refresh the repository Markdown without executing the analysis. The bundled example instead uses `Rscript example/run_example.R` so its inputs and outputs remain isolated.
 
 ### Step 1 — [Prepare PICRUSt2 Inputs](R/notebooks/1_prepare_picrust2_inputs.md) *(required)*
 
@@ -196,8 +215,7 @@ PICRUSt2_16S_Functional_Inference_Workflow/
 │   │   ├── 3_nsti_quality_assessment.Rmd
 │   │   ├── 4_functional_differential_abundance_analysis.Rmd
 │   │   ├── 5_taxon_contribution.Rmd
-│   │   ├── *.md
-│   │   └── *.html
+│   │   └── *.md
 │   ├── functions/
 │   │   ├── add_sheet_to_excel_function.R
 │   │   ├── build_column_dictionary_function.R
@@ -209,6 +227,19 @@ PICRUSt2_16S_Functional_Inference_Workflow/
 │       └── 2_picrust2_flowchart.png
 ├── data/
 │   └── README.md
+├── example/
+│   ├── README.md
+│   ├── run_example.R
+│   ├── data/
+│   │   ├── asv_count_table.csv
+│   │   ├── asv_sequences.csv
+│   │   ├── asv_taxonomy.csv
+│   │   └── metadata.tsv
+│   └── reference_results/
+│       ├── README.md
+│       ├── reports/
+│       │   └── *.html
+│       └── <compact outputs from Steps 1–5>
 └── results/
     └── <regenerable outputs from Steps 1–5>
 ```

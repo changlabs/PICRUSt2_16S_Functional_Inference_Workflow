@@ -1,6 +1,18 @@
 # Data Directory — Local Study Inputs
 
-No study or example data are tracked in this repository. Copy the required files into this directory before running the workflow. The repository `.gitignore` excludes everything under `data/` except this README, so these local inputs are not added to future commits.
+Copy your own study files into this directory before running the numbered notebooks normally. The repository `.gitignore` excludes everything under `data/` except this README, so local study inputs are not added to future commits.
+
+## Bundled example data
+
+The clone-ready example is intentionally stored under [`example/data/`](../example/data/) instead of this normal input directory. It contains 10 samples and 1,468 ASVs with synthetic `Control`/`Treatment` metadata and synthetic taxonomy labels. Run all five steps from the repository root with:
+
+``` bash
+Rscript example/run_example.R
+```
+
+The runner writes only to the ignored `example/run_results/` directory. It does not read or modify normal study inputs here or the normal `results/` directory. Rendered reports and compact outputs can be viewed without running anything under [`example/reference_results/`](../example/reference_results/).
+
+See [`example/README.md`](../example/README.md) for the exact contents, limitations, provenance, and method citations. The abundance and sequence tables were derived from human stool samples generated in our laboratory, then randomly reduced and anonymized for demonstration purposes.
 
 ------------------------------------------------------------------------
 
@@ -55,7 +67,7 @@ Copy one taxonomy table from the companion DADA2 workflow into this directory an
 
 ## What Happens Next
 
-[Step 1](../R/notebooks/1_prepare_picrust2_inputs.md) of this workflow reads both files from this directory and writes the [BIOM](http://biom-format.org/)-format feature table and FASTA representative-sequence file that [PICRUSt2](https://github.com/picrust/picrust2/wiki) requires, into [results/1_prepare_picrust2_inputs/](../results/1_prepare_picrust2_inputs/).
+[Step 1](../R/notebooks/1_prepare_picrust2_inputs.md) of this workflow reads both files from this directory and writes the [BIOM](https://biom-format.org/)-format feature table and FASTA representative-sequence file that [PICRUSt2](https://github.com/picrust/picrust2/wiki) requires, into [results/1_prepare_picrust2_inputs/](../results/1_prepare_picrust2_inputs/).
 
 ------------------------------------------------------------------------
 

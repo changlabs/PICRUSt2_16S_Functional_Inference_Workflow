@@ -102,7 +102,7 @@ th, td {
 
 ## Purpose
 
-This notebook is **Step 2** of the PICRUSt2 workflow. It runs the [PICRUSt2](https://github.com/picrust/picrust2/wiki) functional prediction pipeline on the [BIOM](http://biom-format.org/)-format feature table and FASTA representative sequences prepared in Step 1, producing community-level (per-sample) predicted gene family and pathway abundances for the study community.
+This notebook is **Step 2** of the PICRUSt2 workflow. It runs the [PICRUSt2](https://github.com/picrust/picrust2/wiki) functional prediction pipeline on the [BIOM](https://biom-format.org/)-format feature table and FASTA representative sequences prepared in Step 1, producing community-level (per-sample) predicted gene family and pathway abundances for the study community.
 
 This step is deliberately **community-level only**. Per-ASV contribution tables are generated later in [Step 5 — Taxon Contribution Analysis](5_taxon_contribution.md), which reuses this notebook's predicted marker, KO, and EC tables without repeating sequence placement or hidden-state prediction.
 
@@ -116,7 +116,7 @@ It works by phylogenetically placing each input sequence into a reference tree b
 
 PICRUSt2 combines several independent tools into a single pipeline:
 
-1.  **Sequence placement** — Each ASV is phylogenetically placed into a reference tree of genomes with known gene content, using [EPA-NG](http://github.com/pierrebarbera/epa-ng) by default (or [SEPP](https://github.com/smirarab/sepp) as an alternative), with tree manipulation handled by [gappa](https://github.com/lczech/gappa).
+1.  **Sequence placement** — Each ASV is phylogenetically placed into a reference tree of genomes with known gene content, using [EPA-NG](https://github.com/pierrebarbera/epa-ng) by default (or [SEPP](https://github.com/smirarab/sepp) as an alternative), with tree manipulation handled by [gappa](https://github.com/lczech/gappa).
 2.  **Hidden-state prediction (HSP)** — Gene family copy numbers (and 16S copy number, for abundance normalization) are inferred for each ASV from its position in the reference tree, using the [castor](https://cran.r-project.org/package=castor) R package.
 3.  **Metagenome prediction** — Per-ASV gene family predictions are combined with the ASV abundance table (normalized by predicted 16S copy number) to estimate the community-wide functional profile per sample.
 4.  **Pathway inference** — EC number abundances are collapsed into [MetaCyc](https://metacyc.org/) pathway abundances and coverages using [MinPath](https://omics.informatics.indiana.edu/MinPath/).
@@ -445,8 +445,9 @@ cat(
 Set up the input and output directory paths. Using `here()` ensures paths are relative to the project root, making the script portable across different systems.
 
 ```{r define-paths}
-# Base results folder for all pipeline outputs
-results_folder <- here("results")
+# Base results folder for all pipeline outputs. The example runner overrides it
+# so testing never reads from or writes to the normal results/ tree.
+results_folder <- here(Sys.getenv("PICRUST2_RESULTS_DIR", unset = "results"))
 
 # Folder containing Step 1's outputs (this step's inputs)
 step1_output_folder <- here(results_folder, "1_prepare_picrust2_inputs")
