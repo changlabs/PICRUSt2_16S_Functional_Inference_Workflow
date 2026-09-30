@@ -23,7 +23,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
   - [Step 1 — Prepare PICRUSt2 Inputs](#step-1--prepare-picrust2-inputs-required)
   - [Step 2 — Run the PICRUSt2 Pipeline](#step-2--run-the-picrust2-pipeline-required)
   - [Step 3 — NSTI Quality Assessment](#step-3--nsti-quality-assessment-recommended)
-  - [Step 4 — Functional Differential Abundance](#step-4--functional-differential-abundance-required)
+  - [Step 4 — Functional Differential Abundance](#step-4--functional-differential-abundance-optional)
   - [Step 5 — Taxon Contribution Analysis](#step-5--taxon-contribution-analysis-optional)
 - [Column Dictionaries](#column-dictionaries)
 - [Project Structure](#project-structure)
@@ -72,7 +72,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
         └────────────┬─────────────┘
                      ▼
         ┌──────────────────────────┐
-        │     Step 4 (Required)    │
+        │     Step 4 (Optional)    │
         │ Functional Differential  │
         │   Abundance: MetaCyc +   │
         │           KEGG           │
@@ -89,7 +89,7 @@ PICRUSt2 results represent **predicted functional potential** inferred from mark
              contribution reports
 ```
 
-[Steps 1](R/notebooks/1_prepare_picrust2_inputs.md) and [2](R/notebooks/2_picrust2_pipeline.md) are required to generate the functional predictions. [Step 3](R/notebooks/3_nsti_quality_assessment.md) is a recommended quality-assessment checkpoint before biological interpretation. [Step 4](R/notebooks/4_functional_differential_abundance_analysis.md) performs the workflow's inferential analysis. [Step 5](R/notebooks/5_taxon_contribution.md) is optional for normal studies and generates its own stratified PICRUSt2 run to explain which taxa contribute to selected pathway predictions. The bundled example runs all five steps.
+[Steps 1](R/notebooks/1_prepare_picrust2_inputs.md) and [2](R/notebooks/2_picrust2_pipeline.md) are required to generate the functional predictions. [Step 3](R/notebooks/3_nsti_quality_assessment.md) is a recommended quality-assessment checkpoint before biological interpretation. [Step 4](R/notebooks/4_functional_differential_abundance_analysis.md) is optional and performs the workflow's inferential analysis. [Step 5](R/notebooks/5_taxon_contribution.md) is optional for normal studies and generates its own stratified PICRUSt2 run to explain which taxa contribute to selected pathway predictions. The bundled example runs all five steps.
 
 ------------------------------------------------------------------------
 
@@ -164,7 +164,7 @@ Normal study files are not included in the repository and are ignored by Git. Th
 
 ## Running the Pipeline
 
-Run the numbered notebooks in order from the project root. In RStudio, use **Knit** with the HTML output to execute the analysis and create a complete interactive report. Select **Knit to github_document** when you want to refresh the repository Markdown without executing the analysis. The bundled example instead uses `Rscript example/run_example.R` so its inputs and outputs remain isolated.
+Run the applicable numbered notebooks in order from the project root. In RStudio, use **Knit** with the HTML output to execute the analysis and create a complete interactive report. Select **Knit to github_document** when you want to refresh the repository Markdown without executing the analysis. The bundled example instead uses `Rscript example/run_example.R` so its inputs and outputs remain isolated.
 
 ### Step 1 — [Prepare PICRUSt2 Inputs](R/notebooks/1_prepare_picrust2_inputs.md) *(required)*
 
@@ -178,7 +178,7 @@ Runs `picrust2_pipeline.py` on the Step 1 BIOM and FASTA files. It produces pred
 
 Summarizes PICRUSt2's per-ASV and abundance-weighted per-sample NSTI values, cross-checks the Step 2 filtering log, and calculates the percentage of reads excluded by the configured NSTI threshold. Its Tukey upper-fence flag (`Q3 + 1.5 × IQR` by default) is a descriptive screening rule, not a hypothesis test or p-value.
 
-### Step 4 — [Functional Differential Abundance](R/notebooks/4_functional_differential_abundance_analysis.md) *(required)*
+### Step 4 — [Functional Differential Abundance](R/notebooks/4_functional_differential_abundance_analysis.md) *(optional)*
 
 Analyzes both MetaCyc and KEGG pathway predictions with LinDA and MaAsLin2. Each non-reference condition is compared independently with the condition marked `Reference = TRUE` in `metadata.tsv`. Benjamini-Hochberg adjustment is applied separately within each method, functional level, and comparison; `Method_Agreement` is descriptive and is not a combined p-value or additional test.
 
